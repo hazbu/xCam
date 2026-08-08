@@ -1,9 +1,7 @@
 package com.hazbu.xcam
 
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.SurfaceTexture
-import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CaptureRequest
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -41,7 +39,7 @@ class XCamInjectors(private val module: XCamModule) {
     }
 
     fun installUniversalCaptureHooks(param: XposedModuleInterface.PackageReadyParam) {
-        // 1. Modern Camera2 Session Discovery
+        // 1. Still Capture Trigger
         try {
             val sessionClass = param.classLoader.loadClass("android.hardware.camera2.impl.CameraCaptureSessionImpl")
             val capture = sessionClass.getDeclaredMethods().find { it.name == "capture" && it.parameterTypes.size >= 2 }
@@ -51,7 +49,7 @@ class XCamInjectors(private val module: XCamModule) {
                     if (request != null) {
                         val template = try { request.get(CaptureRequest.CONTROL_CAPTURE_INTENT) } catch (e: Exception) { -1 }
                         if (template == CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE) {
-                            module.printLog("Modern Discovery: STILL_CAPTURE request detected")
+                            module.printLog("Capture Intent Detected")
                             module.triggerCaptureState()
                         }
                     }
@@ -60,26 +58,25 @@ class XCamInjectors(private val module: XCamModule) {
             }
         } catch (e: Throwable) {}
 
-        // 2. The "Hunter" Hook: BitmapFactory (Paling Ampuh)
+        // 2. The Hunter: Hook ALL decodeByteArray variants
         try {
             val bfClass = BitmapFactory::class.java
-            val decodeBA = bfClass.getDeclaredMethod("decodeByteArray", ByteArray::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, BitmapFactory.Options::class.java)
-            module.hook(decodeBA).intercept { chain ->
-                if (module.isCapturingState()) {
-                    module.printLog("Hunter: decodeByteArray intercepted! Injecting virtual photo...")
-                    val replacement = module.handleCapture(1280, 1280) // Gunakan resolusi tinggi untuk TikTok
-                    if (replacement != null) {
-                        val newArgs = chain.args.toTypedArray()
-                        newArgs[0] = replacement
-                        newArgs[2] = replacement.size
-                        return@intercept chain.proceed(newArgs)
+            bfClass.getDeclaredMethods().filter { it.name == "decodeByteArray" }.forEach { method ->
+                module.hook(method).intercept { chain ->
+                    if (module.isCapturingState()) {
+                        module.printLog("Hunter: Success! Intercepted decodeByteArray")
+                        val replacement = module.handleCapture(1280, 1280)
+                        if (replacement != null) {
+                            val newArgs = chain.args.toTypedArray()
+                            newArgs[0] = replacement
+                            if (newArgs.size >= 3) newArgs[2] = replacement.size
+                            return@intercept chain.proceed(newArgs)
+                        }
                     }
+                    chain.proceed()
                 }
-                chain.proceed()
             }
-        } catch (e: Throwable) {
-            module.printLog("Hunter Hook failed: ${e.message}")
-        }
+        } catch (e: Throwable) {}
     }
 
     fun installAndroid16UIHooks(param: XposedModuleInterface.PackageReadyParam) {
@@ -88,7 +85,7 @@ class XCamInjectors(private val module: XCamModule) {
             val setSurfaceTexture = textureViewClass.getDeclaredMethod("setSurfaceTexture", SurfaceTexture::class.java)
             module.hook(setSurfaceTexture).intercept { chain ->
                 val st = chain.args[0] as? SurfaceTexture
-                if (st != null && module.mediaPath != null) module.handleCamera1Preview(st)
+                if (st != null) module.handleCamera1Preview(st)
                 chain.proceed()
             }
 

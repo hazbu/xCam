@@ -20,7 +20,7 @@ import io.github.libxposed.api.XposedModuleInterface
 
 class XCamModule : XposedModule() {
 
-    private val xcamVersion = "v9.8-android16-hunter"
+    private val xcamVersion = "v9.8.1-hunter-refined"
 
     var mediaPath: String? = null
     var isMirrored = false
@@ -51,9 +51,11 @@ class XCamModule : XposedModule() {
     fun isCapturingState(): Boolean = isCapturing
 
     fun triggerCaptureState() {
+        printLog("Triggering Capture State (3s Window)")
         isCapturing = true
-        // Kunci status capture selama 2 detik agar 'Hunter' bisa bekerja
-        uiHandler.postDelayed({ isCapturing = false }, 2000)
+        refreshSettings()
+        uiHandler.removeCallbacksAndMessages(null)
+        uiHandler.postDelayed({ isCapturing = false }, 3000)
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
