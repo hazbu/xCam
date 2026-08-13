@@ -79,7 +79,7 @@ class XCamModule : XposedModule() {
     fun isPreviewSurface(s: Surface?) = surfaceManager.isPreviewSurface(s)
     fun logSessionOutput(s: Surface) = surfaceManager.logSessionOutput(s)
     fun incrementSessionGeneration() = surfaceManager.incrementSessionGeneration()
-    fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(engine.isPlaying())
+    fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(false) // Force clear on new session
 
     // Frame Processing
     fun injectYuvFrame(image: android.media.Image, width: Int, height: Int) {
@@ -88,15 +88,19 @@ class XCamModule : XposedModule() {
     }
 
     // Engine Delegation
-    fun stopEngine() = engine.stop()
+    fun stopEngine() {
+        engine.stop()
+        captureManager.reset()
+    }
     fun handleCamera1Preview(st: SurfaceTexture) = engine.handleCamera1Preview(st)
     fun handleModernPreview(s: Surface) = engine.handleModernPreview(s)
     fun handleSurfaceViewPreview(h: SurfaceHolder) = engine.handleSurfaceViewPreview(h)
     fun getDummySurface() = engine.getDummySurface()
 
     // Capture Delegation
-    fun handleCapture(w: Int, h: Int) = captureManager.handleCapture(
-        settings.mediaPath, w, h, settings.rotationAngle, settings.isMirrored,
+    @JvmOverloads
+    fun handleCapture(w: Int, h: Int, maxSize: Int = Int.MAX_VALUE) = captureManager.handleCapture(
+        settings.mediaPath, w, h, settings.rotationAngle, settings.isMirrored, maxSize,
         { isIgnoringHooks() },
         { setIgnoringHooks(it) },
     )

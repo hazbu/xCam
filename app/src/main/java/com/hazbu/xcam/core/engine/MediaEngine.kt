@@ -54,8 +54,8 @@ class MediaEngine(private val logAction: (String) -> Unit) {
     }
 
     fun stop() {
+        isBusy = true
         mainHandler.post {
-            isBusy = true
             try {
                 player?.apply {
                     stop()

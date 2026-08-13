@@ -19,17 +19,18 @@ object Logger {
     fun e(xi: XposedInterface?, msg: String, tr: Throwable? = null) = printLog(xi, msg, Level.ERROR, tr)
 
     fun printLog(xi: XposedInterface?, msg: String, level: Level = Level.ERROR, tr: Throwable? = null) {
-        val fullMsg = "xCam: [$VERSION] $msg"
+        val fullMsg = "[$VERSION] $msg"
         
-        // Log to Xposed
-        xi?.log(level.xPriority, TAG, fullMsg)
-        
-        // Log to Android Logcat
-        when (level) {
-            Level.DEBUG -> Log.d(TAG, fullMsg)
-            Level.INFO -> Log.i(TAG, fullMsg)
-            Level.WARN -> Log.w(TAG, fullMsg, tr)
-            Level.ERROR -> Log.e(TAG, fullMsg, tr)
+        if (xi != null) {
+            val finalMsg = if (tr != null) "$fullMsg\n${Log.getStackTraceString(tr)}" else fullMsg
+            xi.log(level.xPriority, TAG, finalMsg)
+        } else {
+            when (level) {
+                Level.DEBUG -> Log.d(TAG, fullMsg)
+                Level.INFO -> Log.i(TAG, fullMsg)
+                Level.WARN -> Log.w(TAG, fullMsg, tr)
+                Level.ERROR -> Log.e(TAG, fullMsg, tr)
+            }
         }
     }
 }

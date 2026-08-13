@@ -183,15 +183,17 @@ public class ImageReaderHook {
             }
         } else if (module.isCapturingState() && format == ImageFormat.JPEG) {
             try {
-                byte[] replacement = module.handleCapture(w, h);
-                if (replacement != null) {
-                    Image.Plane[] planes = image.getPlanes();
-                    if (planes != null && planes.length > 0) {
-                        ByteBuffer buffer = planes[0].getBuffer();
-                        if (buffer != null && !buffer.isReadOnly()) {
+                Image.Plane[] planes = image.getPlanes();
+                if (planes != null && planes.length > 0) {
+                    ByteBuffer buffer = planes[0].getBuffer();
+                    if (buffer != null && !buffer.isReadOnly()) {
+                        int capacity = buffer.remaining();
+                        byte[] replacement = module.handleCapture(w, h, capacity);
+                        
+                        if (replacement != null) {
                             buffer.clear();
                             if (buffer.remaining() < replacement.length) {
-                                module.logHook("[!] Activity: ImageReader JPEG replacement skipped: buffer too small");
+                                module.logHook("[!] Activity: ImageReader JPEG replacement skipped: buffer too small (" + buffer.remaining() + " < " + replacement.length + ")");
                                 return;
                             }
                             buffer.put(replacement);

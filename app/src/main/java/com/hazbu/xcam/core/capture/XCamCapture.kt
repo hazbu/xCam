@@ -19,70 +19,78 @@ object XCamCapture {
         rotation: Int,
         mirrored: Boolean,
         timeMs: Int = 1000,
+        maxSizeBytes: Int = Int.MAX_VALUE,
         printLog: (String) -> Unit,
     ): ByteArray? {
-        printLog("Capture Process: Starting for $path (Time: $timeMs ms)")
+        printLog("Capture Process: Starting for $path (Time: $timeMs ms, MaxSize: $maxSizeBytes)")
+        
+        var retriever: MediaMetadataRetriever? = null
         return try {
-            val rawBitmap: Bitmap? = if (path.lowercase().endsWith(".mp4")) {
-                val retriever = MediaMetadataRetriever()
+            var rawBitmap: Bitmap? = null
+            
+            if (path.lowercase().endsWith(".mp4")) {
+                retriever = MediaMetadataRetriever()
                 retriever.setDataSource(context, path.toUri())
 
                 val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                     ?.toLongOrNull() ?: 0L
                 val loopedTimeMs = if (durationMs > 0L) timeMs.toLong() % durationMs else timeMs.toLong()
-                val targetUs = if (loopedTimeMs > 100L) (loopedTimeMs - 100L) * 1000L else loopedTimeMs * 1000L
-                printLog("Capture Process: Extracting frame at $targetUs us (PREVIOUS_SYNC)")
+                
+                val targetUs = loopedTimeMs * 1000L
+                rawBitmap = retriever.getFrameAtTime(targetUs, MediaMetadataRetriever.OPTION_CLOSEST)
 
-                var frame = retriever.getFrameAtTime(targetUs, MediaMetadataRetriever.OPTION_CLOSEST)
-
-                if (frame == null) {
-                    printLog("Capture Process: PREVIOUS_SYNC failed, trying absolute CLOSEST")
-                    frame = retriever.getFrameAtTime(timeMs * 1000L, MediaMetadataRetriever.OPTION_PREVIOUS_SYNC)
+                if (rawBitmap == null) {
+                    rawBitmap = retriever.getFrameAtTime(targetUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 }
 
-                retriever.release()
-                if (frame == null) printLog("Capture Process: FATAL - No frame retrieved")
-                frame
+                if (rawBitmap == null) {
+                    rawBitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_NEXT_SYNC)
+                }
             } else {
-                printLog("Capture Process: Decoding image from $path")
-                context.contentResolver.openInputStream(path.toUri())?.use { BitmapFactory.decodeStream(it) }
+                context.contentResolver.openInputStream(path.toUri())?.use { BitmapFactory.decodeStream(it) }?.let {
+                    rawBitmap = it
+                }
             }
 
-            if (rawBitmap == null) {
-                printLog("Capture Process: Raw bitmap is null")
-                return null
-            }
+            if (rawBitmap == null) return null
 
-            printLog("Capture Process: Source Size ${rawBitmap.width}x${rawBitmap.height}")
-
+            // Transformasi Frame (Rotation & Mirroring)
             val sourceW = rawBitmap.width
             val sourceH = rawBitmap.height
-
             val rotatedSourceW = if (rotation % 180 != 0) sourceH else sourceW
             val rotatedSourceH = if (rotation % 180 != 0) sourceW else sourceH
 
             val scale = Math.min(targetW.toFloat() / rotatedSourceW, targetH.toFloat() / rotatedSourceH)
-
-            val matrix = AndroidMatrix()
-            matrix.postScale(scale, scale)
-            if (rotation != 0) matrix.postRotate(rotation.toFloat())
-            if (mirrored) matrix.postScale(-1f, 1f)
+            val matrix = AndroidMatrix().apply {
+                postScale(scale, scale)
+                if (rotation != 0) postRotate(rotation.toFloat())
+                if (mirrored) postScale(-1f, 1f)
+            }
 
             val transformedSource = Bitmap.createBitmap(rawBitmap, 0, 0, sourceW, sourceH, matrix, true)
             
             val finalBitmap = createBitmap(targetW, targetH)
-            val canvas = android.graphics.Canvas(finalBitmap)
-            canvas.drawColor(android.graphics.Color.BLACK)
+            android.graphics.Canvas(finalBitmap).apply {
+                drawColor(android.graphics.Color.BLACK)
+                val left = (targetW - transformedSource.width) / 2f
+                val top = (targetH - transformedSource.height) / 2f
+                drawBitmap(transformedSource, left, top, null)
+            }
 
-            val left = (targetW - transformedSource.width) / 2f
-            val top = (targetH - transformedSource.height) / 2f
-            canvas.drawBitmap(transformedSource, left, top, null)
+            // Adaptive Compression: Loop until it fits the buffer
+            var result: ByteArray
+            var quality = 100
+            do {
+                val out = ByteArrayOutputStream()
+                finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                result = out.toByteArray()
+                if (result.size <= maxSizeBytes) break
+                
+                quality -= 5
+                printLog("Capture Process: Target size exceeded (${result.size} > $maxSizeBytes). Retrying with quality $quality")
+            } while (quality > 5)
 
-            val out = ByteArrayOutputStream()
-            finalBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-            val result = out.toByteArray()
-
-            printLog("Capture Process: SUCCESS. Final Size ${finalBitmap.width}x${finalBitmap.height} (${result.size} bytes)")
+            printLog("Capture Process: SUCCESS (${result.size} bytes, quality $quality)")
 
             if (rawBitmap != transformedSource) rawBitmap.recycle()
             transformedSource.recycle()
@@ -90,8 +98,10 @@ object XCamCapture {
             
             result
         } catch (e: Exception) {
-            printLog("createCaptureJpeg error: ${e.message}")
+            printLog("Capture Process: ERROR - ${e.message}")
             null
+        } finally {
+            try { retriever?.release() } catch (_: Exception) {}
         }
     }
 }

@@ -37,6 +37,16 @@ class CaptureManager(
 
     private fun log(msg: String) = logAction("[CAPTURE] $msg")
 
+    fun reset() {
+        uiHandler.removeCallbacksAndMessages(null)
+        isCapturing = false
+        cachedCaptureFrame = null
+        cachedStreamFrame = null
+        streamKey = null
+        streamExtractionRunning = false
+        log("[*] Manager state RESET")
+    }
+
     fun triggerCaptureState(currentPositionProvider: () -> Int) {
         val now = System.currentTimeMillis()
         if ((now - lastCapturePulseTime) < 2000) return
@@ -64,6 +74,7 @@ class CaptureManager(
         rotation: Int,
         mirrored: Boolean,
         timeMs: Int,
+        maxSizeBytes: Int,
         setIgnoringHooks: (Boolean) -> Unit
     ): ByteArray? {
         return try {
@@ -72,7 +83,7 @@ class CaptureManager(
                 context, path, 
                 width.coerceAtLeast(DEFAULT_CAPTURE_WIDTH), 
                 height.coerceAtLeast(DEFAULT_CAPTURE_HEIGHT), 
-                rotation, mirrored, timeMs, logAction
+                rotation, mirrored, timeMs, maxSizeBytes, logAction
             )
         } catch (e: Throwable) {
             log("Extraction failed: ${e.message}")
@@ -88,6 +99,7 @@ class CaptureManager(
         height: Int,
         rotationAngle: Int,
         isMirrored: Boolean,
+        maxSizeBytes: Int,
         isIgnoringHooks: () -> Boolean,
         setIgnoringHooks: (Boolean) -> Unit
     ): ByteArray? {
@@ -96,7 +108,7 @@ class CaptureManager(
 
         return synchronized(this) {
             cachedCaptureFrame ?: performExtraction(
-                context, path, width, height, rotationAngle, isMirrored, captureTimeMs, setIgnoringHooks
+                context, path, width, height, rotationAngle, isMirrored, captureTimeMs, maxSizeBytes, setIgnoringHooks
             ).also {
                 cachedCaptureFrame = it
                 if (it != null) log("[+] Capture extraction successful")
@@ -117,7 +129,7 @@ class CaptureManager(
         val actualPath = path ?: return null
         
         if (!actualPath.lowercase().endsWith(".mp4")) {
-            return handleCapture(path, width, height, rotationAngle, isMirrored, isIgnoringHooks, setIgnoringHooks)
+            return handleCapture(path, width, height, rotationAngle, isMirrored, Int.MAX_VALUE, isIgnoringHooks, setIgnoringHooks)
         }
 
         val now = SystemClock.elapsedRealtime()
@@ -138,7 +150,7 @@ class CaptureManager(
                 val frameTimeMs = (now - streamStartedAtMs).toInt().coerceAtLeast(0)
                 
                 streamExecutor.execute {
-                    performExtraction(context, actualPath, width, height, rotationAngle, isMirrored, frameTimeMs, setIgnoringHooks)?.let {
+                    performExtraction(context, actualPath, width, height, rotationAngle, isMirrored, frameTimeMs, Int.MAX_VALUE, setIgnoringHooks)?.let {
                         cachedStreamFrame = it
                     }
                     synchronized(this) { streamExtractionRunning = false }
