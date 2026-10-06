@@ -128,11 +128,16 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
     }
 
     private fun updateModuleStatusUI() {
-        val officialScope = getOfficialScope().filter { it != packageName }
-        val isActive = (mXposedService != null && officialScope.isNotEmpty()) || checkSelfActive()
+        val service = mXposedService
+        val isActive = service != null || checkSelfActive()
 
         if (isActive) {
-            tvModuleStatus.text = getString(R.string.status_module_active)
+            val statusText = if (service != null && !service.frameworkName.isNullOrBlank()) {
+                "${getString(R.string.status_module_active)} (${service.frameworkName})"
+            } else {
+                getString(R.string.status_module_active)
+            }
+            tvModuleStatus.text = statusText
             val activeColor = MaterialColors.getColor(tvModuleStatus, androidx.appcompat.R.attr.colorPrimary)
             tvModuleStatus.setTextColor(activeColor)
             cardModuleStatus.strokeColor = activeColor

@@ -39,6 +39,10 @@ public class CaptureHook {
             
             hookMediaStore(param);
             
+            hookMediaRecorder(param);
+
+            hookMediaCodec(param);
+            
             module.logHook("[+] Capture Diversion Hooks installed successfully");
         } catch (Throwable t) {
             module.logHook("[!] Capture Hooks installation failed: " + t.getMessage());
@@ -203,6 +207,32 @@ public class CaptureHook {
                 return chain.proceed();
             });
             module.logHook("[+] Hooked: ContentResolver#openFileDescriptor");
+        } catch (Throwable ignored) {}
+    }
+
+    private void hookMediaRecorder(XposedModuleInterface.PackageReadyParam param) {
+        try {
+            Class<?> mrClass = param.getClassLoader().loadClass("android.media.MediaRecorder");
+            Method startMethod = mrClass.getDeclaredMethod("start");
+            module.hook(startMethod).intercept(chain -> {
+                module.recordPipelineNode("MediaRecorder#start");
+                module.logHook("[*] Activity: MediaRecorder#start");
+                return chain.proceed();
+            });
+            module.logHook("[+] Hooked: MediaRecorder#start");
+        } catch (Throwable ignored) {}
+    }
+
+    private void hookMediaCodec(XposedModuleInterface.PackageReadyParam param) {
+        try {
+            Class<?> mcClass = param.getClassLoader().loadClass("android.media.MediaCodec");
+            Method createInputSurface = mcClass.getDeclaredMethod("createInputSurface");
+            module.hook(createInputSurface).intercept(chain -> {
+                module.recordPipelineNode("MediaCodec(InputSurface)");
+                module.logHook("[*] Activity: MediaCodec#createInputSurface");
+                return chain.proceed();
+            });
+            module.logHook("[+] Hooked: MediaCodec#createInputSurface");
         } catch (Throwable ignored) {}
     }
 }

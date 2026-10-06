@@ -140,6 +140,18 @@ public class Camera2Hook {
                         return chain.proceed();
                     }
 
+                    if (intent != null && intent == CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD) {
+                        module.logHook("[*] Activity: addTarget [VIDEO_RECORD]");
+                        module.recordPipelineNode("Camera2(VideoRecord)");
+                        return chain.proceed();
+                    }
+
+                    if (intent != null && intent == CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_SNAPSHOT) {
+                        module.logHook("[*] Activity: addTarget [VIDEO_SNAPSHOT]");
+                        module.recordPipelineNode("Camera2(VideoSnapshot)");
+                        return chain.proceed();
+                    }
+
                     if (module.isPreviewSurface(surface)) {
                         Object[] newArgs = new Object[] { module.getDummySurface() };
                         return chain.proceed(newArgs);
