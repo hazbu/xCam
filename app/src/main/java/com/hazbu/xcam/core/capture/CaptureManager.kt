@@ -80,10 +80,12 @@ class CaptureManager(
     ): ByteArray? {
         return try {
             setIgnoringHooks(true)
+            val finalW = if (width > 0) width else liveFrame?.width ?: DEFAULT_CAPTURE_WIDTH
+            val finalH = if (height > 0) height else liveFrame?.height ?: DEFAULT_CAPTURE_HEIGHT
             XCamCapture.createJpeg(
                 context, path, 
-                width.coerceAtLeast(DEFAULT_CAPTURE_WIDTH), 
-                height.coerceAtLeast(DEFAULT_CAPTURE_HEIGHT), 
+                finalW, 
+                finalH, 
                 rotation, mirrored, timeMs, maxSizeBytes, logAction,
                 liveFrame
             )

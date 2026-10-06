@@ -99,7 +99,14 @@ object XCamCapture {
             val rotatedSourceW = if (rotation % 180 != 0) sourceH else sourceW
             val rotatedSourceH = if (rotation % 180 != 0) sourceW else sourceH
 
-            val scale = Math.max(targetW.toFloat() / rotatedSourceW, targetH.toFloat() / rotatedSourceH)
+            val (resolvedTargetW, resolvedTargetH) = if ((rotatedSourceW < rotatedSourceH && targetW > targetH) ||
+                (rotatedSourceW > rotatedSourceH && targetW < targetH)) {
+                Pair(targetH, targetW)
+            } else {
+                Pair(targetW, targetH)
+            }
+
+            val scale = Math.max(resolvedTargetW.toFloat() / rotatedSourceW, resolvedTargetH.toFloat() / rotatedSourceH)
             val matrix = AndroidMatrix().apply {
                 postScale(scale, scale)
                 if (rotation != 0) postRotate(rotation.toFloat())
@@ -108,10 +115,10 @@ object XCamCapture {
 
             val transformedSource = Bitmap.createBitmap(rawBitmap, 0, 0, sourceW, sourceH, matrix, true)
 
-            val finalBitmap = createBitmap(targetW, targetH)
+            val finalBitmap = createBitmap(resolvedTargetW, resolvedTargetH)
             android.graphics.Canvas(finalBitmap).apply {
-                val left = (targetW - transformedSource.width) / 2f
-                val top = (targetH - transformedSource.height) / 2f
+                val left = (resolvedTargetW - transformedSource.width) / 2f
+                val top = (resolvedTargetH - transformedSource.height) / 2f
                 drawBitmap(transformedSource, left, top, null)
             }
 

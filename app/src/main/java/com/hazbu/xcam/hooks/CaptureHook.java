@@ -22,9 +22,11 @@ import io.github.libxposed.api.XposedModuleInterface;
  */
 public class CaptureHook {
     private final XCamModule module;
+    private final ImageReaderHook imageReaderHook;
 
-    public CaptureHook(XCamModule module) {
+    public CaptureHook(XCamModule module, ImageReaderHook imageReaderHook) {
         this.module = module;
+        this.imageReaderHook = imageReaderHook;
     }
 
     public void install(XposedModuleInterface.PackageReadyParam param) {
@@ -50,11 +52,21 @@ public class CaptureHook {
                     module.hook(method).intercept(chain -> {
                         if (module.isIgnoringHooks()) return chain.proceed();
                         if (module.isCapturingState() && module.getMediaPath() != null) {
-                            byte[] injected = module.handleCapture(0, 0);
+                            int activeW = imageReaderHook.getActiveCaptureWidth();
+                            int activeH = imageReaderHook.getActiveCaptureHeight();
+                            int targetW = activeW > 0 ? activeW : Constants.DEFAULT_CAPTURE_WIDTH;
+                            int targetH = activeH > 0 ? activeH : Constants.DEFAULT_CAPTURE_HEIGHT;
+                            byte[] injected = module.handleCapture(targetW, targetH);
                             if (injected != null) {
-                                module.recordPipelineNode("BitmapFactory#decodeByteArray");
-                                module.reportPipelineCapture(0, 0, injected);
-                                module.logHook("[*] Activity: Captured -> Injected into BitmapFactory#decodeByteArray");
+                                BitmapFactory.Options boundOpts = new BitmapFactory.Options();
+                                boundOpts.inJustDecodeBounds = true;
+                                BitmapFactory.decodeByteArray(injected, 0, injected.length, boundOpts);
+                                int actualW = boundOpts.outWidth > 0 ? boundOpts.outWidth : targetW;
+                                int actualH = boundOpts.outHeight > 0 ? boundOpts.outHeight : targetH;
+                                String nodeDesc = "BitmapFactory#decodeByteArray(" + actualW + "x" + actualH + ")";
+                                module.recordPipelineNode(nodeDesc);
+                                module.reportPipelineCapture(actualW, actualH, injected);
+                                module.logHook("[*] Activity: Captured -> Injected into BitmapFactory#decodeByteArray (" + actualW + "x" + actualH + ")");
                                 Object[] args = chain.getArgs().toArray();
                                 args[0] = injected;
                                 if (args.length >= 3) args[2] = injected.length;
@@ -70,7 +82,11 @@ public class CaptureHook {
                     module.hook(method).intercept(chain -> {
                         if (module.isIgnoringHooks()) return chain.proceed();
                         if (module.isCapturingState() && module.getMediaPath() != null) {
-                            byte[] injected = module.handleCapture(0, 0);
+                            int activeW = imageReaderHook.getActiveCaptureWidth();
+                            int activeH = imageReaderHook.getActiveCaptureHeight();
+                            int targetW = activeW > 0 ? activeW : Constants.DEFAULT_CAPTURE_WIDTH;
+                            int targetH = activeH > 0 ? activeH : Constants.DEFAULT_CAPTURE_HEIGHT;
+                            byte[] injected = module.handleCapture(targetW, targetH);
                             if (injected != null) {
                                 try {
                                     module.setIgnoringHooks(true);
@@ -81,9 +97,12 @@ public class CaptureHook {
                                     
                                     Bitmap bitmap = BitmapFactory.decodeByteArray(injected, 0, injected.length, opts);
                                     if (bitmap != null) {
-                                        module.recordPipelineNode("BitmapFactory#decodeStream");
-                                        module.reportPipelineCapture(0, 0, injected);
-                                        module.logHook("[*] Activity: Captured -> Injected virtual Bitmap into BitmapFactory#decodeStream");
+                                        int actualW = bitmap.getWidth();
+                                        int actualH = bitmap.getHeight();
+                                        String nodeDesc = "BitmapFactory#decodeStream(" + actualW + "x" + actualH + ")";
+                                        module.recordPipelineNode(nodeDesc);
+                                        module.reportPipelineCapture(actualW, actualH, injected);
+                                        module.logHook("[*] Activity: Captured -> Injected virtual Bitmap into BitmapFactory#decodeStream (" + actualW + "x" + actualH + ")");
                                         return bitmap;
                                     }
                                 } finally {
@@ -105,7 +124,11 @@ public class CaptureHook {
             module.hook(compress).intercept(chain -> {
                 if (module.isIgnoringHooks()) return chain.proceed();
                 if (module.isCapturingState() && module.getMediaPath() != null) {
-                    byte[] injected = module.handleCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT);
+                    int activeW = imageReaderHook.getActiveCaptureWidth();
+                    int activeH = imageReaderHook.getActiveCaptureHeight();
+                    int targetW = activeW > 0 ? activeW : Constants.DEFAULT_CAPTURE_WIDTH;
+                    int targetH = activeH > 0 ? activeH : Constants.DEFAULT_CAPTURE_HEIGHT;
+                    byte[] injected = module.handleCapture(targetW, targetH);
                     if (injected != null) {
                         OutputStream os = (OutputStream) chain.getArgs().get(2);
                         if (os != null) {
@@ -113,9 +136,15 @@ public class CaptureHook {
                                 module.setIgnoringHooks(true);
                                 os.write(injected);
                                 os.flush();
-                                module.recordPipelineNode("Bitmap#compress");
-                                module.reportPipelineCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT, injected);
-                                module.logHook("[*] Activity: Captured -> Injected into Bitmap#compress");
+                                BitmapFactory.Options boundOpts = new BitmapFactory.Options();
+                                boundOpts.inJustDecodeBounds = true;
+                                BitmapFactory.decodeByteArray(injected, 0, injected.length, boundOpts);
+                                int actualW = boundOpts.outWidth > 0 ? boundOpts.outWidth : targetW;
+                                int actualH = boundOpts.outHeight > 0 ? boundOpts.outHeight : targetH;
+                                String nodeDesc = "Bitmap#compress(" + actualW + "x" + actualH + ")";
+                                module.recordPipelineNode(nodeDesc);
+                                module.reportPipelineCapture(actualW, actualH, injected);
+                                module.logHook("[*] Activity: Captured -> Injected into Bitmap#compress (" + actualW + "x" + actualH + ")");
                                 return true;
                             } catch (Throwable t) {
                                 module.logHook("[!] Bitmap#compress injection FAILED: " + t.getMessage());
@@ -143,15 +172,25 @@ public class CaptureHook {
                 if (uri != null && mode != null && mode.contains("w") && module.isCapturingState()) {
                     ParcelFileDescriptor pfd = (ParcelFileDescriptor) chain.proceed();
                     if (pfd != null) {
-                        byte[] injected = module.handleCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT);
+                        int activeW = imageReaderHook.getActiveCaptureWidth();
+                        int activeH = imageReaderHook.getActiveCaptureHeight();
+                        int targetW = activeW > 0 ? activeW : Constants.DEFAULT_CAPTURE_WIDTH;
+                        int targetH = activeH > 0 ? activeH : Constants.DEFAULT_CAPTURE_HEIGHT;
+                        byte[] injected = module.handleCapture(targetW, targetH);
                         if (injected != null) {
                             try (FileOutputStream fos = new FileOutputStream(pfd.getFileDescriptor())) {
                                 module.setIgnoringHooks(true);
                                 fos.write(injected);
                                 fos.flush();
-                                module.recordPipelineNode("MediaStore#openFD");
-                                module.reportPipelineCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT, injected);
-                                module.logHook("[*] Activity: Captured -> Injected into MediaStore FD: " + uri);
+                                BitmapFactory.Options boundOpts = new BitmapFactory.Options();
+                                boundOpts.inJustDecodeBounds = true;
+                                BitmapFactory.decodeByteArray(injected, 0, injected.length, boundOpts);
+                                int actualW = boundOpts.outWidth > 0 ? boundOpts.outWidth : targetW;
+                                int actualH = boundOpts.outHeight > 0 ? boundOpts.outHeight : targetH;
+                                String nodeDesc = "MediaStore#openFD(" + actualW + "x" + actualH + ")";
+                                module.recordPipelineNode(nodeDesc);
+                                module.reportPipelineCapture(actualW, actualH, injected);
+                                module.logHook("[*] Activity: Captured -> Injected into MediaStore FD (" + actualW + "x" + actualH + "): " + uri);
                             } catch (Throwable t) {
                                 module.logHook("[!] MediaStore injection error: " + t.getMessage());
                             } finally {

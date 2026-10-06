@@ -27,6 +27,25 @@ public class ImageReaderHook {
     private final Set<String> injectedFlows = new HashSet<>();
     private final Map<ImageReader, ReaderMetadata> readerTracker = new WeakHashMap<>();
 
+    private volatile int activeCaptureWidth = 0;
+    private volatile int activeCaptureHeight = 0;
+
+    public int getActiveCaptureWidth() {
+        return activeCaptureWidth;
+    }
+
+    public int getActiveCaptureHeight() {
+        return activeCaptureHeight;
+    }
+
+    public void reset() {
+        activeCaptureWidth = 0;
+        activeCaptureHeight = 0;
+        detectedFlows.clear();
+        injectedFlows.clear();
+        readerTracker.clear();
+    }
+
     private static class ReaderMetadata {
         final int width;
         final int height;
@@ -82,6 +101,13 @@ public class ImageReaderHook {
                         int h = (int) chain.getArgs().get(1);
                         int format = (int) chain.getArgs().get(2);
                         String fmtName = getFormatName(format);
+
+                        if (w > 0 && h > 0) {
+                            if (format == ImageFormat.JPEG || (w * h >= activeCaptureWidth * activeCaptureHeight)) {
+                                activeCaptureWidth = w;
+                                activeCaptureHeight = h;
+                            }
+                        }
                         
                         Object result = chain.proceed();
                         if (result instanceof ImageReader) {
@@ -177,6 +203,13 @@ public class ImageReaderHook {
         int format = reader.getImageFormat();
         String key = w + "x" + h + "_" + format;
         String shortFmt = getShortFormatName(format);
+
+        if (w > 0 && h > 0) {
+            if (format == ImageFormat.JPEG || activeCaptureWidth == 0 || activeCaptureHeight == 0) {
+                activeCaptureWidth = w;
+                activeCaptureHeight = h;
+            }
+        }
 
         if (!detectedFlows.contains(key)) {
             detectedFlows.add(key);

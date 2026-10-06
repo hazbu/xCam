@@ -19,6 +19,7 @@ import com.hazbu.xcam.core.telemetry.PipelineTracker
 import com.hazbu.xcam.utils.Logger
 import com.hazbu.xcam.utils.SystemUtils
 import com.hazbu.xcam.utils.UIUtils
+import com.hazbu.xcam.data.Constants
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 
@@ -119,6 +120,7 @@ class XCamModule : XposedModule() {
         audioDecoder = null
         engine.stop()
         captureManager.reset()
+        injectors.imageReaderHook.reset()
     }
     fun handleCamera1Preview(st: SurfaceTexture) = engine.handleCamera1Preview(st)
     fun handleModernPreview(s: Surface) = engine.handleModernPreview(s)
@@ -151,13 +153,22 @@ class XCamModule : XposedModule() {
         audioDecoder?.readByteBuffer(buffer, length)
     }
 
+    fun getImageReaderCaptureWidth(): Int = injectors.imageReaderHook.activeCaptureWidth
+    fun getImageReaderCaptureHeight(): Int = injectors.imageReaderHook.activeCaptureHeight
+
     @JvmOverloads
-    fun handleCapture(w: Int, h: Int, maxSize: Int = Int.MAX_VALUE) = captureManager.handleCapture(
-        settings.mediaPath, w, h, settings.rotationAngle, settings.isMirrored, maxSize,
-        { isIgnoringHooks() },
-        { setIgnoringHooks(it) },
-        yuvDecoder?.latestFrame
-    )
+    fun handleCapture(w: Int = 0, h: Int = 0, maxSize: Int = Int.MAX_VALUE): ByteArray? {
+        val irW = injectors.imageReaderHook.activeCaptureWidth
+        val irH = injectors.imageReaderHook.activeCaptureHeight
+        val targetW = if (w > 0) w else if (irW > 0) irW else Constants.DEFAULT_CAPTURE_WIDTH
+        val targetH = if (h > 0) h else if (irH > 0) irH else Constants.DEFAULT_CAPTURE_HEIGHT
+        return captureManager.handleCapture(
+            settings.mediaPath, targetW, targetH, settings.rotationAngle, settings.isMirrored, maxSize,
+            { isIgnoringHooks() },
+            { setIgnoringHooks(it) },
+            yuvDecoder?.latestFrame
+        )
+    }
 
     fun handleStreamFrame(w: Int, h: Int) = captureManager.handleStreamFrame(
         settings.mediaPath, w, h, settings.rotationAngle, settings.isMirrored,

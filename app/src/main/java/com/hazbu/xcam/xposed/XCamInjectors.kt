@@ -5,12 +5,12 @@ import io.github.libxposed.api.XposedModuleInterface
 
 class XCamInjectors(private val module: XCamModule) {
 
-    private val cameraHook = CameraHook(module)
-    private val camera2Hook = Camera2Hook(module)
-    private val captureHook = CaptureHook(module)
-    private val imageReaderHook = ImageReaderHook(module)
-    private val webRtcHook = WebRtcHook(module)
-    private val audioHook = AudioHook(module)
+    val cameraHook = CameraHook(module)
+    val camera2Hook = Camera2Hook(module)
+    val imageReaderHook = ImageReaderHook(module)
+    val captureHook = CaptureHook(module, imageReaderHook)
+    val webRtcHook = WebRtcHook(module)
+    val audioHook = AudioHook(module)
 
     fun install(param: XposedModuleInterface.PackageReadyParam) {
         cameraHook.install(param)
