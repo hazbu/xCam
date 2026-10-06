@@ -185,7 +185,7 @@ class MediaEngine(private val logAction: (String) -> Unit) {
             player?.let {
                 currentPositionInternal = it.currentPosition
                 if (isPlayingInternal) {
-                    mainHandler.postDelayed(this, 500)
+                    mainHandler.postDelayed(this, 50)
                 }
             }
         }

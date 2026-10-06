@@ -35,6 +35,8 @@ public class CaptureHook {
     private static class RecorderTarget {
         String path;
         FileDescriptor fd;
+        long startMediaPosMs = 0;
+        long startWallClockMs = 0;
 
         RecorderTarget(String path, FileDescriptor fd) {
             this.path = path;
@@ -279,6 +281,21 @@ public class CaptureHook {
         }
     }
 
+    private void recordStartTime(Object recorder) {
+        RecorderTarget target = null;
+        if (recorder != null) {
+            target = recorderTargets.get(recorder);
+        }
+        if (target == null) {
+            target = lastRecorderTarget;
+        }
+        if (target != null) {
+            target.startMediaPosMs = module.getCurrentPosition();
+            target.startWallClockMs = System.currentTimeMillis();
+            module.logHook("[*] MediaRecorder#start timing captured: StartMediaPos=" + target.startMediaPosMs + " ms, WallClock=" + target.startWallClockMs);
+        }
+    }
+
     private void replaceMediaRecorderOutput(Object recorder) {
         RecorderTarget target = null;
         if (recorder != null) {
@@ -299,30 +316,60 @@ public class CaptureHook {
             return;
         }
 
+        long stopWallClockMs = System.currentTimeMillis();
+        long recordDurationMs = (target.startWallClockMs > 0) ? (stopWallClockMs - target.startWallClockMs) : 0;
+        long startMediaPosMs = target.startMediaPosMs;
+        module.logHook("[*] MediaRecorder#stop timing: Duration=" + recordDurationMs + " ms, StartMediaPos=" + startMediaPosMs + " ms");
+
         boolean replaced = false;
         long copiedBytes = 0;
 
         if (target.path != null) {
             File destFile = new File(target.path);
-            try (InputStream in = openSourceStream(mediaPath);
-                 FileOutputStream out = new FileOutputStream(destFile, false)) {
-                if (in != null) {
-                    byte[] buffer = new byte[65536];
-                    int len;
-                    while ((len = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, len);
-                        copiedBytes += len;
+            android.content.Context ctx = module.getContext();
+            if (ctx != null && recordDurationMs > 300) {
+                try {
+                    replaced = com.hazbu.xcam.utils.MediaRemuxer.INSTANCE.trimVideo(
+                        ctx,
+                        mediaPath,
+                        destFile,
+                        startMediaPosMs,
+                        recordDurationMs,
+                        msg -> {
+                            module.logHook(msg);
+                            return kotlin.Unit.INSTANCE;
+                        }
+                    );
+                    if (replaced) {
+                        module.recordPipelineNode("MediaRecorder(VideoTrimmed)");
+                        module.logHook("[*] Activity: MediaRecorder#stop -> Trimmed video successfully: " + target.path + " (Duration: " + recordDurationMs + " ms)");
                     }
-                    out.flush();
-                    try {
-                        out.getFD().sync();
-                    } catch (Throwable ignored) {}
-                    replaced = true;
-                    module.recordPipelineNode("MediaRecorder(VideoReplaced)");
-                    module.logHook("[*] Activity: MediaRecorder#stop -> Successfully replaced file: " + target.path + " (" + copiedBytes + " bytes)");
+                } catch (Throwable t) {
+                    module.logHook("[!] Trimming attempt failed: " + t.getMessage());
                 }
-            } catch (Throwable t) {
-                module.logHook("[!] Failed to replace file at " + target.path + ": " + t.getMessage());
+            }
+
+            if (!replaced) {
+                try (InputStream in = openSourceStream(mediaPath);
+                     FileOutputStream out = new FileOutputStream(destFile, false)) {
+                    if (in != null) {
+                        byte[] buffer = new byte[65536];
+                        int len;
+                        while ((len = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, len);
+                            copiedBytes += len;
+                        }
+                        out.flush();
+                        try {
+                            out.getFD().sync();
+                        } catch (Throwable ignored) {}
+                        replaced = true;
+                        module.recordPipelineNode("MediaRecorder(VideoReplaced)");
+                        module.logHook("[*] Activity: MediaRecorder#stop -> Successfully replaced file: " + target.path + " (" + copiedBytes + " bytes)");
+                    }
+                } catch (Throwable t) {
+                    module.logHook("[!] Failed to replace file at " + target.path + ": " + t.getMessage());
+                }
             }
         }
 
@@ -387,6 +434,8 @@ public class CaptureHook {
 
             Method startMethod = mrClass.getDeclaredMethod("start");
             module.hook(startMethod).intercept(chain -> {
+                Object recorder = chain.getThisObject();
+                recordStartTime(recorder);
                 module.recordPipelineNode("MediaRecorder#start");
                 module.logHook("[*] Activity: MediaRecorder#start");
                 return chain.proceed();

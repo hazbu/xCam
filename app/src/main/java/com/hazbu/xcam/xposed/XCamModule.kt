@@ -80,6 +80,8 @@ class XCamModule : XposedModule() {
         captureManager.triggerCaptureState { engine.getCurrentPosition().toInt() }
     }
 
+    fun getCurrentPosition(): Long = engine.getCurrentPosition()
+
     fun registerPreviewSurface(s: Surface) = surfaceManager.registerPreviewSurface(s)
     fun registerImageReaderSurface(s: Surface, f: Int, w: Int, h: Int) = surfaceManager.registerImageReaderSurface(s, f, w, h)
     fun isPreviewSurface(s: Surface?) = surfaceManager.isPreviewSurface(s)
