@@ -179,7 +179,6 @@ public class Camera2Hook {
             Method sessionClose = sessionClass.getDeclaredMethod("close");
             module.hook(sessionClose).intercept(chain -> {
                 module.logHook("[*] Activity: CameraCaptureSessionImpl#close");
-                module.stopEngine();
                 return chain.proceed();
             });
             module.logHook("[+] Hooked: Camera2 Cleanup methods");

@@ -9,9 +9,17 @@ import android.os.ParcelFileDescriptor;
 import com.hazbu.xcam.data.Constants;
 import com.hazbu.xcam.xposed.XCamModule;
 
+import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.github.libxposed.api.XposedModuleInterface;
 
@@ -23,6 +31,19 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class CaptureHook {
     private final XCamModule module;
     private final ImageReaderHook imageReaderHook;
+
+    private static class RecorderTarget {
+        String path;
+        FileDescriptor fd;
+
+        RecorderTarget(String path, FileDescriptor fd) {
+            this.path = path;
+            this.fd = fd;
+        }
+    }
+
+    private final Map<Object, RecorderTarget> recorderTargets = new ConcurrentHashMap<>();
+    private volatile RecorderTarget lastRecorderTarget;
 
     public CaptureHook(XCamModule module, ImageReaderHook imageReaderHook) {
         this.module = module;
@@ -210,9 +231,160 @@ public class CaptureHook {
         } catch (Throwable ignored) {}
     }
 
+    private String resolveFdPath(FileDescriptor fd) {
+        if (fd == null) return null;
+        try {
+            Field field = FileDescriptor.class.getDeclaredField("descriptor");
+            field.setAccessible(true);
+            int fdInt = (int) field.get(fd);
+            if (fdInt >= 0) {
+                File procLink = new File("/proc/self/fd/" + fdInt);
+                if (procLink.exists()) {
+                    return procLink.getCanonicalPath();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private void recordOutputTarget(Object recorder, String path, FileDescriptor fd) {
+        String resolvedPath = path;
+        if (resolvedPath == null && fd != null) {
+            resolvedPath = resolveFdPath(fd);
+        }
+        RecorderTarget target = new RecorderTarget(resolvedPath, fd);
+        if (recorder != null) {
+            recorderTargets.put(recorder, target);
+        }
+        lastRecorderTarget = target;
+        module.logHook("[*] MediaRecorder output configured -> Path: " + resolvedPath + " | FD: " + fd);
+    }
+
+    private InputStream openSourceStream(String path) {
+        if (path == null) return null;
+        try {
+            if (path.startsWith("content://")) {
+                android.content.Context ctx = module.getContext();
+                if (ctx != null) {
+                    return ctx.getContentResolver().openInputStream(Uri.parse(path));
+                }
+            }
+            if (path.startsWith("file://")) {
+                return new FileInputStream(Uri.parse(path).getPath());
+            }
+            return new FileInputStream(path);
+        } catch (Throwable t) {
+            module.logHook("[!] Failed to open media source stream: " + t.getMessage());
+            return null;
+        }
+    }
+
+    private void replaceMediaRecorderOutput(Object recorder) {
+        RecorderTarget target = null;
+        if (recorder != null) {
+            target = recorderTargets.remove(recorder);
+        }
+        if (target == null) {
+            target = lastRecorderTarget;
+            lastRecorderTarget = null;
+        }
+        if (target == null) {
+            module.logHook("[!] MediaRecorder#stop: No output target found to replace");
+            return;
+        }
+
+        String mediaPath = module.getMediaPath();
+        if (mediaPath == null) {
+            module.logHook("[!] MediaRecorder#stop: Media path is null, cannot replace recorded video");
+            return;
+        }
+
+        boolean replaced = false;
+        long copiedBytes = 0;
+
+        if (target.path != null) {
+            File destFile = new File(target.path);
+            try (InputStream in = openSourceStream(mediaPath);
+                 FileOutputStream out = new FileOutputStream(destFile, false)) {
+                if (in != null) {
+                    byte[] buffer = new byte[65536];
+                    int len;
+                    while ((len = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, len);
+                        copiedBytes += len;
+                    }
+                    out.flush();
+                    try {
+                        out.getFD().sync();
+                    } catch (Throwable ignored) {}
+                    replaced = true;
+                    module.recordPipelineNode("MediaRecorder(VideoReplaced)");
+                    module.logHook("[*] Activity: MediaRecorder#stop -> Successfully replaced file: " + target.path + " (" + copiedBytes + " bytes)");
+                }
+            } catch (Throwable t) {
+                module.logHook("[!] Failed to replace file at " + target.path + ": " + t.getMessage());
+            }
+        }
+
+        if (!replaced && target.fd != null && target.fd.valid()) {
+            try (ParcelFileDescriptor dupPfd = ParcelFileDescriptor.dup(target.fd);
+                 FileOutputStream fos = new FileOutputStream(dupPfd.getFileDescriptor())) {
+                java.nio.channels.FileChannel channel = fos.getChannel();
+                channel.position(0);
+                channel.truncate(0);
+                try (InputStream in = openSourceStream(mediaPath)) {
+                    if (in != null) {
+                        byte[] buffer = new byte[65536];
+                        int len;
+                        while ((len = in.read(buffer)) != -1) {
+                            fos.write(buffer, 0, len);
+                            copiedBytes += len;
+                        }
+                        fos.flush();
+                        try {
+                            channel.force(true);
+                        } catch (Throwable ignored) {}
+                        replaced = true;
+                        module.recordPipelineNode("MediaRecorder(VideoReplaced)");
+                        module.logHook("[*] Activity: MediaRecorder#stop -> Successfully replaced via FileDescriptor (" + copiedBytes + " bytes)");
+                    }
+                }
+            } catch (Throwable t) {
+                module.logHook("[!] Failed to replace via FileDescriptor: " + t.getMessage());
+            }
+        }
+
+        if (!replaced) {
+            module.logHook("[!] MediaRecorder#stop: Output replacement was not successful");
+        }
+    }
+
     private void hookMediaRecorder(XposedModuleInterface.PackageReadyParam param) {
         try {
             Class<?> mrClass = param.getClassLoader().loadClass("android.media.MediaRecorder");
+
+            for (Method m : mrClass.getDeclaredMethods()) {
+                String name = m.getName();
+                if (name.equals("setOutputFile") || name.equals("setNextOutputFile")) {
+                    module.hook(m).intercept(chain -> {
+                        Object recorder = chain.getThisObject();
+                        List<Object> args = chain.getArgs();
+                        if (args != null && !args.isEmpty()) {
+                            Object target = args.get(0);
+                            if (target instanceof String) {
+                                recordOutputTarget(recorder, (String) target, null);
+                            } else if (target instanceof File) {
+                                recordOutputTarget(recorder, ((File) target).getAbsolutePath(), null);
+                            } else if (target instanceof FileDescriptor) {
+                                recordOutputTarget(recorder, null, (FileDescriptor) target);
+                            }
+                        }
+                        return chain.proceed();
+                    });
+                    module.logHook("[+] Hooked: MediaRecorder#" + name);
+                }
+            }
+
             Method startMethod = mrClass.getDeclaredMethod("start");
             module.hook(startMethod).intercept(chain -> {
                 module.recordPipelineNode("MediaRecorder#start");
@@ -220,6 +392,32 @@ public class CaptureHook {
                 return chain.proceed();
             });
             module.logHook("[+] Hooked: MediaRecorder#start");
+
+            Method stopMethod = mrClass.getDeclaredMethod("stop");
+            module.hook(stopMethod).intercept(chain -> {
+                Object recorder = chain.getThisObject();
+                Object result = chain.proceed();
+                try {
+                    replaceMediaRecorderOutput(recorder);
+                } catch (Throwable t) {
+                    module.logHook("[!] MediaRecorder#stop replacement invocation failed: " + t.getMessage());
+                }
+                return result;
+            });
+            module.logHook("[+] Hooked: MediaRecorder#stop");
+
+            for (Method m : mrClass.getDeclaredMethods()) {
+                String name = m.getName();
+                if (name.equals("reset") || name.equals("release")) {
+                    module.hook(m).intercept(chain -> {
+                        Object recorder = chain.getThisObject();
+                        if (recorder != null) {
+                            recorderTargets.remove(recorder);
+                        }
+                        return chain.proceed();
+                    });
+                }
+            }
         } catch (Throwable ignored) {}
     }
 

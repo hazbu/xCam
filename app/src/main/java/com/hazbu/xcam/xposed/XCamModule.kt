@@ -55,6 +55,7 @@ class XCamModule : XposedModule() {
     fun isIgnoringHooks(): Boolean = ignoreHooks.get() ?: false
     fun setIgnoringHooks(ignore: Boolean) { ignoreHooks.set(ignore) }
 
+    val context: Context? get() = mContext
     val mediaPath: String? get() = settings.mediaPath
     var previewSwapped: Boolean
         get() = surfaceManager.previewSwapped
@@ -84,7 +85,7 @@ class XCamModule : XposedModule() {
     fun isPreviewSurface(s: Surface?) = surfaceManager.isPreviewSurface(s)
     fun logSessionOutput(s: Surface) = surfaceManager.logSessionOutput(s)
     fun incrementSessionGeneration() = surfaceManager.incrementSessionGeneration()
-    fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(false)
+    fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(engine.isPlaying())
 
     fun recordPipelineNode(node: String) {
         PipelineTracker.recordNode(mContext, node)
