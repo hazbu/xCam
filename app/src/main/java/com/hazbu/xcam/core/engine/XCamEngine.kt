@@ -36,8 +36,6 @@ class XCamEngine(
     fun stop() {
         uiHandler.removeCallbacksAndMessages(null)
         mediaEngine.stop()
-        // We no longer release the dummy surface here to avoid native race conditions
-        // and allow faster reopening of the camera.
         lastST = null
         lastModernSurface = null
         lastInjectedSurfaceId = -1L

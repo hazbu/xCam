@@ -41,7 +41,6 @@ public class AudioHook {
                 Class<?>[] params = method.getParameterTypes();
                 if (params.length < 2) continue;
 
-                // 1. read(byte[] audioData, int offsetInBytes, int sizeInBytes, ...)
                 if (params[0] == byte[].class && params[1] == int.class && params[2] == int.class) {
                     module.hook(method).intercept(chain -> {
                         Object result = chain.proceed();
@@ -58,7 +57,6 @@ public class AudioHook {
                     module.logHook("[+] Hooked: AudioRecord#read(byte[], ...)");
                 }
 
-                // 2. read(short[] audioData, int offsetInShorts, int sizeInShorts, ...)
                 if (params[0] == short[].class && params[1] == int.class && params[2] == int.class) {
                     module.hook(method).intercept(chain -> {
                         Object result = chain.proceed();
@@ -74,7 +72,6 @@ public class AudioHook {
                     module.logHook("[+] Hooked: AudioRecord#read(short[], ...)");
                 }
 
-                // 3. read(ByteBuffer audioBuffer, int sizeInBytes, ...)
                 if (params[0] == ByteBuffer.class && params[1] == int.class) {
                     module.hook(method).intercept(chain -> {
                         Object result = chain.proceed();

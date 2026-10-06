@@ -75,7 +75,6 @@ public class ImageReaderHook {
 
     private void hookImageReader(XposedModuleInterface.PackageReadyParam param) {
         try {
-            // Hook ImageReader.newInstance
             for (Method method : ImageReader.class.getDeclaredMethods()) {
                 if (method.getName().equals("newInstance")) {
                     module.hook(method).intercept(chain -> {
@@ -90,6 +89,8 @@ public class ImageReaderHook {
                             long surfaceId = SystemUtils.INSTANCE.getSurfaceId(reader.getSurface());
                             readerTracker.put(reader, new ReaderMetadata(w, h, format, fmtName, surfaceId));
                             module.registerImageReaderSurface(reader.getSurface(), format, w, h);
+                            String shortFmt = getShortFormatName(format);
+                            module.recordPipelineNode("ImageReader(" + w + "x" + h + " " + shortFmt + ")");
                             module.logHook("[+] ImageReader.newInstance: " + w + "x" + h + " " + fmtName + " | ID: " + surfaceId);
                             module.showToast(w + "x" + h + " (" + fmtName + ")");
                         }
@@ -98,7 +99,6 @@ public class ImageReaderHook {
                 }
             }
 
-            // Hook setOnImageAvailableListener
             try {
                 Method setListener = ImageReader.class.getDeclaredMethod("setOnImageAvailableListener", ImageReader.OnImageAvailableListener.class, android.os.Handler.class);
                 module.hook(setListener).intercept(chain -> {
@@ -110,7 +110,6 @@ public class ImageReaderHook {
                 module.logHook("[+] Hooked: ImageReader#setOnImageAvailableListener");
             } catch (Throwable ignored) {}
 
-            // Hook acquireLatestImage
             try {
                 Method acquireLatest = ImageReader.class.getDeclaredMethod("acquireLatestImage");
                 module.hook(acquireLatest).intercept(chain -> {
@@ -128,7 +127,6 @@ public class ImageReaderHook {
                 module.logHook("[+] Hooked: ImageReader#acquireLatestImage");
             } catch (Throwable ignored) {}
 
-            // Hook acquireNextImage
             try {
                 Method acquireNext = ImageReader.class.getDeclaredMethod("acquireNextImage");
                 module.hook(acquireNext).intercept(chain -> {
@@ -146,7 +144,6 @@ public class ImageReaderHook {
                 module.logHook("[+] Hooked: ImageReader#acquireNextImage");
             } catch (Throwable ignored) {}
 
-            // Hook close
             try {
                 Method close = ImageReader.class.getDeclaredMethod("close");
                 module.hook(close).intercept(chain -> {
@@ -163,11 +160,23 @@ public class ImageReaderHook {
         }
     }
 
+    private String getShortFormatName(int format) {
+        switch (format) {
+            case ImageFormat.JPEG: return "JPEG";
+            case ImageFormat.YUV_420_888: return "YUV";
+            case 0x1: return "RGBA";
+            case 0x22: return "PRIVATE";
+            case ImageFormat.RAW_SENSOR: return "RAW";
+            default: return "0x" + Integer.toHexString(format);
+        }
+    }
+
     private void processAcquiredImage(ImageReader reader, Image image) {
         int w = reader.getWidth();
         int h = reader.getHeight();
         int format = reader.getImageFormat();
         String key = w + "x" + h + "_" + format;
+        String shortFmt = getShortFormatName(format);
 
         if (!detectedFlows.contains(key)) {
             detectedFlows.add(key);
@@ -177,7 +186,7 @@ public class ImageReaderHook {
         }
 
         if (module.getMediaPath() != null && format == ImageFormat.YUV_420_888) {
-            module.recordPipelineNode("ImageReader(YUV)");
+            module.recordPipelineNode("ImageReader(" + w + "x" + h + " " + shortFmt + ")");
             module.injectYuvFrame(image, w, h);
             if (injectedFlows.add(key)) {
                 module.logHook("[+] Activity: ImageReader YUV replacement active: " + key);
@@ -198,7 +207,7 @@ public class ImageReaderHook {
                                 return;
                             }
                             buffer.put(replacement);
-                            module.recordPipelineNode("ImageReader(JPEG)");
+                            module.recordPipelineNode("ImageReader(" + w + "x" + h + " " + shortFmt + ")");
                             module.reportPipelineCapture(w, h, replacement);
                             module.logHook("[+] Activity: ImageReader JPEG replaced successfully (" + replacement.length + " bytes)");
                         }
@@ -207,6 +216,8 @@ public class ImageReaderHook {
             } catch (Throwable t) {
                 module.logHook("[!] Failed to inject JPEG: " + t.getMessage());
             }
+        } else if (format == 0x1) {
+            module.recordPipelineNode("ImageReader(" + w + "x" + h + " " + shortFmt + ")");
         }
     }
 }

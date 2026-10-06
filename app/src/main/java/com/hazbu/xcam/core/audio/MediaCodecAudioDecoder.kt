@@ -96,7 +96,6 @@ class MediaCodecAudioDecoder(
             val timeoutUs = 10_000L
 
             while (isRunning) {
-                // Keep buffer queue reasonable (limit ~2MB of PCM audio in queue)
                 if (pcmQueue.size > 50) {
                     Thread.sleep(20)
                     continue
@@ -108,7 +107,6 @@ class MediaCodecAudioDecoder(
                     if (inputBuffer != null) {
                         val sampleSize = extractor.readSampleData(inputBuffer, 0)
                         if (sampleSize < 0) {
-                            // Loop audio with video
                             extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
                         } else {
                             codec.queueInputBuffer(
@@ -137,7 +135,6 @@ class MediaCodecAudioDecoder(
                 }
             }
         } catch (_: InterruptedException) {
-            // normal thread interruption
         } catch (e: Throwable) {
             logAction("[AUDIO-DECODER] Error: ${e.message}")
         } finally {
@@ -170,7 +167,6 @@ class MediaCodecAudioDecoder(
         }
 
         if (written > 0) {
-            // Fill remainder with silence if buffer underflow
             if (written < length) {
                 target.fill(0, offset + written, offset + length)
             }

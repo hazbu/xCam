@@ -53,9 +53,6 @@
             android:authorities="com.hazbu.xcam.provider"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
-        <receiver
-            android:name=".ui.NotificationDismissReceiver"
-            android:exported="false" />
     </application>
 </manifest>
 

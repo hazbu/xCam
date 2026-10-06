@@ -51,7 +51,7 @@ public class CameraHook {
                 if (method.getName().equals("produceFrame") && method.getParameterTypes().length == 5) {
                     module.hook(method).intercept(chain -> {
                         int format = (int) chain.getArgs().get(4);
-                        if (format == 0x21) { // JPEG
+                        if (format == 0x21) {
                             int width = (int) chain.getArgs().get(2);
                             int height = (int) chain.getArgs().get(3);
                             byte[] replacement = module.handleCapture(width, height);
@@ -91,7 +91,6 @@ public class CameraHook {
             module.hook(startPreview).intercept(chain -> {
                 Object result = chain.proceed();
                 if (module.getMediaPath() != null && viewfinderSurface != null && viewfinderSurface.isValid()) {
-                    module.recordPipelineNode("Camera1(Preview)");
                     module.registerPreviewSurface(viewfinderSurface);
                 }
                 return result;
@@ -115,7 +114,10 @@ public class CameraHook {
             Class<?> paramsClass = Camera.Parameters.class;
             Method setPreviewSize = paramsClass.getDeclaredMethod("setPreviewSize", int.class, int.class);
             module.hook(setPreviewSize).intercept(chain -> {
-                module.logHook("[*] Legacy Activity: setPreviewSize " + chain.getArgs().get(0) + "x" + chain.getArgs().get(1));
+                int pw = (int) chain.getArgs().get(0);
+                int ph = (int) chain.getArgs().get(1);
+                module.recordPipelineNode("Camera1(Preview " + pw + "x" + ph + " NV21)");
+                module.logHook("[*] Legacy Activity: setPreviewSize " + pw + "x" + ph);
                 return chain.proceed();
             });
             module.logHook("[+] Hooked: Camera.Parameters#setPreviewSize");
@@ -136,12 +138,14 @@ public class CameraHook {
 
                         module.triggerCaptureState();
                         Camera.Parameters params = camera.getParameters();
-                        byte[] imageData = module.handleCapture(params.getPictureSize().width, params.getPictureSize().height);
+                        int picW = params.getPictureSize().width;
+                        int picH = params.getPictureSize().height;
+                        byte[] imageData = module.handleCapture(picW, picH);
 
                         if (imageData == null) return chain.proceed();
 
-                        module.recordPipelineNode("Camera1(takePicture)");
-                        module.reportPipelineCapture(params.getPictureSize().width, params.getPictureSize().height, imageData);
+                        module.recordPipelineNode("Camera1(takePicture " + picW + "x" + picH + " JPEG)");
+                        module.reportPipelineCapture(picW, picH, imageData);
 
                         final ShutterCallback shutterCallback = (ShutterCallback) chain.getArgs().get(0);
                         final PictureCallback rawCallback = (PictureCallback) chain.getArgs().get(1);

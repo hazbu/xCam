@@ -18,9 +18,9 @@
     <string name="label_pipeline_monitor">Pipeline Route Monitor</string>
     <string name="label_capture_notification">Capture Alert Card</string>
     <string name="desc_capture_notification">Show heads-up notification card when a photo is captured</string>
-    <string name="label_no_pipeline_history">Belum ada aktivitas hook terdeteksi</string>
+    <string name="label_no_pipeline_history">No hook activity detected yet</string>
     <string name="label_last_active_app">Target: %s</string>
-    <string name="label_last_route">Rute Hook: %s</string>
-    <string name="label_last_timestamp">Waktu: %s</string>
+    <string name="label_last_route">Hook Route: %s</string>
+    <string name="label_last_timestamp">Time: %s</string>
 </resources>
 

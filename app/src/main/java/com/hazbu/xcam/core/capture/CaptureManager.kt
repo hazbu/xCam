@@ -75,7 +75,8 @@ class CaptureManager(
         mirrored: Boolean,
         timeMs: Int,
         maxSizeBytes: Int,
-        setIgnoringHooks: (Boolean) -> Unit
+        setIgnoringHooks: (Boolean) -> Unit,
+        liveFrame: MediaCodecYuvDecoder.YuvFrame? = null
     ): ByteArray? {
         return try {
             setIgnoringHooks(true)
@@ -83,7 +84,8 @@ class CaptureManager(
                 context, path, 
                 width.coerceAtLeast(DEFAULT_CAPTURE_WIDTH), 
                 height.coerceAtLeast(DEFAULT_CAPTURE_HEIGHT), 
-                rotation, mirrored, timeMs, maxSizeBytes, logAction
+                rotation, mirrored, timeMs, maxSizeBytes, logAction,
+                liveFrame
             )
         } catch (e: Throwable) {
             log("Extraction failed: ${e.message}")
@@ -93,6 +95,7 @@ class CaptureManager(
         }
     }
 
+    @JvmOverloads
     fun handleCapture(
         path: String?,
         width: Int,
@@ -101,17 +104,18 @@ class CaptureManager(
         isMirrored: Boolean,
         maxSizeBytes: Int,
         isIgnoringHooks: () -> Boolean,
-        setIgnoringHooks: (Boolean) -> Unit
+        setIgnoringHooks: (Boolean) -> Unit,
+        liveFrame: MediaCodecYuvDecoder.YuvFrame? = null
     ): ByteArray? {
         if (isIgnoringHooks() || path == null) return null
         val context = contextProvider() ?: return null
 
         return synchronized(this) {
             cachedCaptureFrame ?: performExtraction(
-                context, path, width, height, rotationAngle, isMirrored, captureTimeMs, maxSizeBytes, setIgnoringHooks
+                context, path, width, height, rotationAngle, isMirrored, captureTimeMs, maxSizeBytes, setIgnoringHooks, liveFrame
             ).also {
                 cachedCaptureFrame = it
-                if (it != null) log("[+] Capture extraction successful")
+                if (it != null) log("[+] Capture extraction successful (liveFrame: ${liveFrame != null})")
             }
         }
     }

@@ -30,15 +30,12 @@ public final class WebRtcHook {
             hookStopListening(helper);
             module.logHook("[+] WebRTC support hooks installed");
         } catch (ClassNotFoundException ignored) {
-            // WebRTC is optional; do not make ordinary camera apps fail.
         } catch (Throwable t) {
             module.logHook("[!] WebRTC hook setup failed: " + t.getMessage());
         }
     }
 
     private void hookStartListening(Class<?> helper) {
-        // Do not resolve VideoSink directly: older WebRTC releases used a
-        // differently named observer interface.
         for (Method startListening : helper.getDeclaredMethods()) {
             if (!startListening.getName().equals("startListening") || startListening.getParameterTypes().length != 1) continue;
             module.hook(startListening).intercept(chain -> {

@@ -78,15 +78,13 @@ class XCamModule : XposedModule() {
         captureManager.triggerCaptureState { engine.getCurrentPosition().toInt() }
     }
 
-    // Surface Management
     fun registerPreviewSurface(s: Surface) = surfaceManager.registerPreviewSurface(s)
     fun registerImageReaderSurface(s: Surface, f: Int, w: Int, h: Int) = surfaceManager.registerImageReaderSurface(s, f, w, h)
     fun isPreviewSurface(s: Surface?) = surfaceManager.isPreviewSurface(s)
     fun logSessionOutput(s: Surface) = surfaceManager.logSessionOutput(s)
     fun incrementSessionGeneration() = surfaceManager.incrementSessionGeneration()
-    fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(false) // Force clear on new session
+    fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(false)
 
-    // Pipeline Telemetry
     fun recordPipelineNode(node: String) {
         PipelineTracker.recordNode(mContext, node)
     }
@@ -96,7 +94,6 @@ class XCamModule : XposedModule() {
         PipelineTracker.reportCapture(mContext, width, height, thumbnail)
     }
 
-    // Frame Processing
     fun injectYuvFrame(image: android.media.Image, width: Int, height: Int) {
         val path = settings.mediaPath
         val ctx = mContext
@@ -111,12 +108,10 @@ class XCamModule : XposedModule() {
             }
         }
 
-        // Fallback for non-mp4 or when decoder not ready yet
         val jpeg = handleStreamFrame(width, height) ?: return
         yuvProcessor.injectToImage(image, jpeg)
     }
 
-    // Engine Delegation
     fun stopEngine() {
         yuvDecoder?.stop()
         yuvDecoder = null
@@ -129,7 +124,6 @@ class XCamModule : XposedModule() {
     fun handleModernPreview(s: Surface) = engine.handleModernPreview(s)
     fun getDummySurface() = engine.getDummySurface()
 
-    // Audio Injection
     fun injectAudioBytes(buffer: ByteArray, offset: Int, length: Int) {
         val path = settings.mediaPath ?: return
         val ctx = mContext ?: return
@@ -157,12 +151,12 @@ class XCamModule : XposedModule() {
         audioDecoder?.readByteBuffer(buffer, length)
     }
 
-    // Capture Delegation
     @JvmOverloads
     fun handleCapture(w: Int, h: Int, maxSize: Int = Int.MAX_VALUE) = captureManager.handleCapture(
         settings.mediaPath, w, h, settings.rotationAngle, settings.isMirrored, maxSize,
         { isIgnoringHooks() },
         { setIgnoringHooks(it) },
+        yuvDecoder?.latestFrame
     )
 
     fun handleStreamFrame(w: Int, h: Int) = captureManager.handleStreamFrame(

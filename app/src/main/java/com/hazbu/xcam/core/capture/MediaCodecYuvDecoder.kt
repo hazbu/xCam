@@ -121,7 +121,6 @@ class MediaCodecYuvDecoder(
                         if (inputBuffer != null) {
                             val sampleSize = extractor.readSampleData(inputBuffer, 0)
                             if (sampleSize < 0) {
-                                // Loop video indefinitely
                                 extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
                             } else {
                                 codec.queueInputBuffer(
@@ -155,7 +154,6 @@ class MediaCodecYuvDecoder(
                 }
             }
         } catch (_: InterruptedException) {
-            // normal thread interruption
         } catch (e: Throwable) {
             logAction("[YUV-DECODER] Decoder error: ${e.message}")
         } finally {

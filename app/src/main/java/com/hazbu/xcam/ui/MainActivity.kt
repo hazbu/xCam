@@ -1,6 +1,9 @@
 package com.hazbu.xcam.ui
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -70,6 +73,7 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
     private lateinit var tvPipelineApp: TextView
     private lateinit var tvPipelineRoute: TextView
     private lateinit var tvPipelineTime: TextView
+    private lateinit var btnCopyPipeline: MaterialButton
     private lateinit var btnClearPipeline: MaterialButton
 
     private var isMirrored = false
@@ -80,7 +84,7 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (!isGranted) {
-            Toast.makeText(this, "Izin notifikasi dibutuhkan untuk Heads-up Card", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Notification permission is required for Capture Alert Card", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -180,6 +184,7 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
         tvPipelineApp = findViewById(R.id.tv_pipeline_app)
         tvPipelineRoute = findViewById(R.id.tv_pipeline_route)
         tvPipelineTime = findViewById(R.id.tv_pipeline_time)
+        btnCopyPipeline = findViewById(R.id.btn_copy_pipeline)
         btnClearPipeline = findViewById(R.id.btn_clear_pipeline)
 
         switchCaptureNotif.setOnCheckedChangeListener { _, isChecked ->
@@ -193,6 +198,33 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
             }
         }
 
+        btnCopyPipeline.setOnClickListener {
+            val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val app = prefs.getString(KEY_LATEST_PIPELINE_APP, "") ?: ""
+            val route = prefs.getString(KEY_LATEST_PIPELINE_ROUTE, "") ?: ""
+            val time = prefs.getLong(KEY_LATEST_PIPELINE_TIME, 0L)
+
+            if (app.isEmpty() && route.isEmpty()) {
+                Toast.makeText(this, "No route to copy", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val formattedTime = if (time > 0L) {
+                SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(time))
+            } else ""
+
+            val copyText = buildString {
+                if (app.isNotEmpty()) append("Target: $app\n")
+                if (route.isNotEmpty()) append("Route: $route\n")
+                if (formattedTime.isNotEmpty()) append("Time: $formattedTime")
+            }.trim()
+
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val clip = ClipData.newPlainText("xCam Pipeline", copyText)
+            clipboard?.setPrimaryClip(clip)
+            Toast.makeText(this, "Pipeline route copied to clipboard", Toast.LENGTH_SHORT).show()
+        }
+
         btnClearPipeline.setOnClickListener {
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
                 remove(KEY_LATEST_PIPELINE_APP)
@@ -200,7 +232,7 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
                 remove(KEY_LATEST_PIPELINE_TIME)
             }
             loadTelemetryUI()
-            Toast.makeText(this, "Riwayat pipeline dibersihkan", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Pipeline history cleared", Toast.LENGTH_SHORT).show()
         }
 
         btnMirror.setOnClickListener {

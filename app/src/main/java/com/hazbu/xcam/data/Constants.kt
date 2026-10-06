@@ -7,7 +7,6 @@ object Constants {
     const val KEY_ROTATION_ANGLE = "rotation_angle"
     const val AUTHORITY = "com.hazbu.xcam.provider"
 
-    // Engine Configurations
     const val DEFAULT_CAPTURE_WIDTH = 1280
     const val DEFAULT_CAPTURE_HEIGHT = 1280
     const val DUMMY_SURFACE_TEXTURE_ID = 999

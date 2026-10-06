@@ -31,13 +31,10 @@ public class CaptureHook {
         try {
             module.logHook("[*] Initializing Capture Diversion Hooks");
             
-            // 1. BitmapFactory (Byte Array & Stream)
             hookBitmapFactory(param);
             
-            // 2. Bitmap.compress
             hookBitmapCompress(param);
             
-            // 3. ContentResolver (MediaStore / Scoped Storage)
             hookMediaStore(param);
             
             module.logHook("[+] Capture Diversion Hooks installed successfully");
@@ -49,12 +46,11 @@ public class CaptureHook {
     private void hookBitmapFactory(XposedModuleInterface.PackageReadyParam param) {
         try {
             for (Method method : BitmapFactory.class.getDeclaredMethods()) {
-                // 1. Hook decodeByteArray
                 if (method.getName().equals("decodeByteArray")) {
                     module.hook(method).intercept(chain -> {
                         if (module.isIgnoringHooks()) return chain.proceed();
                         if (module.isCapturingState() && module.getMediaPath() != null) {
-                            byte[] injected = module.handleCapture(0, 0); // Use 0,0 for default/cached
+                            byte[] injected = module.handleCapture(0, 0);
                             if (injected != null) {
                                 module.recordPipelineNode("BitmapFactory#decodeByteArray");
                                 module.reportPipelineCapture(0, 0, injected);
@@ -70,8 +66,6 @@ public class CaptureHook {
                     module.logHook("[+] Hooked: BitmapFactory#decodeByteArray");
                 }
                 
-                // 2. Hook decodeStream - Return injected Bitmap directly if capturing
-                // This is more reliable for apps that use streams for camera frames
                 if (method.getName().equals("decodeStream") && method.getParameterTypes().length >= 1) {
                     module.hook(method).intercept(chain -> {
                         if (module.isIgnoringHooks()) return chain.proceed();
@@ -80,7 +74,6 @@ public class CaptureHook {
                             if (injected != null) {
                                 try {
                                     module.setIgnoringHooks(true);
-                                    // Use Options if provided in args
                                     BitmapFactory.Options opts = null;
                                     if (chain.getArgs().size() >= 3 && chain.getArgs().get(2) instanceof BitmapFactory.Options) {
                                         opts = (BitmapFactory.Options) chain.getArgs().get(2);
@@ -140,7 +133,6 @@ public class CaptureHook {
 
     private void hookMediaStore(XposedModuleInterface.PackageReadyParam param) {
         try {
-            // openFileDescriptor (Scoped Storage)
             Method openFD = ContentResolver.class.getDeclaredMethod("openFileDescriptor", Uri.class, String.class);
             module.hook(openFD).intercept(chain -> {
                 if (module.isIgnoringHooks()) return chain.proceed();
