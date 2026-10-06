@@ -37,10 +37,7 @@ public class CaptureHook {
             // 2. Bitmap.compress
             hookBitmapCompress(param);
             
-            // 3. FileOutputStream (Direct file writes)
-            hookFileOutputStream(param);
-            
-            // 4. ContentResolver (MediaStore / Scoped Storage)
+            // 3. ContentResolver (MediaStore / Scoped Storage)
             hookMediaStore(param);
             
             module.logHook("[+] Capture Diversion Hooks installed successfully");
@@ -59,6 +56,8 @@ public class CaptureHook {
                         if (module.isCapturingState() && module.getMediaPath() != null) {
                             byte[] injected = module.handleCapture(0, 0); // Use 0,0 for default/cached
                             if (injected != null) {
+                                module.recordPipelineNode("BitmapFactory#decodeByteArray");
+                                module.reportPipelineCapture(0, 0, injected);
                                 module.logHook("[*] Activity: Captured -> Injected into BitmapFactory#decodeByteArray");
                                 Object[] args = chain.getArgs().toArray();
                                 args[0] = injected;
@@ -89,6 +88,8 @@ public class CaptureHook {
                                     
                                     Bitmap bitmap = BitmapFactory.decodeByteArray(injected, 0, injected.length, opts);
                                     if (bitmap != null) {
+                                        module.recordPipelineNode("BitmapFactory#decodeStream");
+                                        module.reportPipelineCapture(0, 0, injected);
                                         module.logHook("[*] Activity: Captured -> Injected virtual Bitmap into BitmapFactory#decodeStream");
                                         return bitmap;
                                     }
@@ -119,6 +120,8 @@ public class CaptureHook {
                                 module.setIgnoringHooks(true);
                                 os.write(injected);
                                 os.flush();
+                                module.recordPipelineNode("Bitmap#compress");
+                                module.reportPipelineCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT, injected);
                                 module.logHook("[*] Activity: Captured -> Injected into Bitmap#compress");
                                 return true;
                             } catch (Throwable t) {
@@ -132,34 +135,6 @@ public class CaptureHook {
                 return chain.proceed();
             });
             module.logHook("[+] Hooked: Bitmap#compress");
-        } catch (Throwable ignored) {}
-    }
-
-    private void hookFileOutputStream(XposedModuleInterface.PackageReadyParam param) {
-        try {
-            Method write = FileOutputStream.class.getDeclaredMethod("write", byte[].class, int.class, int.class);
-            module.hook(write).intercept(chain -> {
-                if (module.isIgnoringHooks()) return chain.proceed();
-                if (module.isCapturingState() && module.getMediaPath() != null) {
-                    byte[] data = (byte[]) chain.getArgs().get(0);
-                    int len = (int) chain.getArgs().get(2);
-                    
-                    // Detect JPEG header (FF D8 FF)
-                    if (data != null && len > 100 && (data[0] & 0xFF) == 0xFF && (data[1] & 0xFF) == 0xD8) {
-                        byte[] injected = module.handleCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT);
-                        if (injected != null) {
-                            module.logHook("[*] Activity: Captured -> Injected into FileOutputStream#write (" + len + " bytes)");
-                            Object[] args = chain.getArgs().toArray();
-                            args[0] = injected;
-                            args[1] = 0;
-                            args[2] = injected.length;
-                            return chain.proceed(args);
-                        }
-                    }
-                }
-                return chain.proceed();
-            });
-            module.logHook("[+] Hooked: FileOutputStream#write");
         } catch (Throwable ignored) {}
     }
 
@@ -182,6 +157,8 @@ public class CaptureHook {
                                 module.setIgnoringHooks(true);
                                 fos.write(injected);
                                 fos.flush();
+                                module.recordPipelineNode("MediaStore#openFD");
+                                module.reportPipelineCapture(Constants.DEFAULT_CAPTURE_WIDTH, Constants.DEFAULT_CAPTURE_HEIGHT, injected);
                                 module.logHook("[*] Activity: Captured -> Injected into MediaStore FD: " + uri);
                             } catch (Throwable t) {
                                 module.logHook("[!] MediaStore injection error: " + t.getMessage());

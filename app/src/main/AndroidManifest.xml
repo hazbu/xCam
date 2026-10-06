@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
 
@@ -52,6 +53,9 @@
             android:authorities="com.hazbu.xcam.provider"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
+        <receiver
+            android:name=".ui.NotificationDismissReceiver"
+            android:exported="false" />
     </application>
 </manifest>
 

@@ -15,5 +15,12 @@
     <string name="desc_rotate_right">Rotate Right</string>
     <string name="desc_mirror">Mirror</string>
     <string name="label_active_scopes">Active Scopes</string>
+    <string name="label_pipeline_monitor">Pipeline Route Monitor</string>
+    <string name="label_capture_notification">Capture Alert Card</string>
+    <string name="desc_capture_notification">Show heads-up notification card when a photo is captured</string>
+    <string name="label_no_pipeline_history">Belum ada aktivitas hook terdeteksi</string>
+    <string name="label_last_active_app">Target: %s</string>
+    <string name="label_last_route">Rute Hook: %s</string>
+    <string name="label_last_timestamp">Waktu: %s</string>
 </resources>
 

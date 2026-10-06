@@ -10,6 +10,7 @@ import com.hazbu.xcam.xposed.XCamModule;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Collection;
+import java.util.List;
 
 import io.github.libxposed.api.XposedModuleInterface;
 
@@ -63,7 +64,8 @@ public class Camera2Hook {
         if (arg instanceof Surface) {
             Surface s = (Surface) arg;
             module.logSessionOutput(s);
-            if (s.toString().contains("SurfaceTexture") || s.toString().contains("SurfaceView")) {
+            String sStr = s.toString();
+            if (sStr.contains("SurfaceTexture") || sStr.contains("SurfaceView") || sStr.contains("BLAST") || sStr.contains("Surface")) {
                 module.registerPreviewSurface(s);
             }
         } else if (arg instanceof OutputConfiguration) {
@@ -79,22 +81,36 @@ public class Camera2Hook {
             Class<?> ocClass = param.getClassLoader().loadClass("android.hardware.camera2.params.OutputConfiguration");
             for (Constructor<?> constructor : ocClass.getDeclaredConstructors()) {
                 module.hook(constructor).intercept(chain -> {
-                    Object firstArg = !chain.getArgs().isEmpty() ? chain.getArgs().get(0) : null;
-                    if (firstArg instanceof Surface && ((Surface) firstArg).isValid() && module.getMediaPath() != null) {
-                        Surface surface = (Surface) firstArg;
+                    if (module.getMediaPath() == null) return chain.proceed();
+
+                    Surface surface = null;
+                    int surfaceIndex = -1;
+                    List<Object> args = chain.getArgs();
+                    for (int i = 0; i < args.size(); i++) {
+                        if (args.get(i) instanceof Surface && ((Surface) args.get(i)).isValid()) {
+                            surface = (Surface) args.get(i);
+                            surfaceIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (surface != null) {
                         String sStr = surface.toString();
-                        
-                        if (sStr.contains("SurfaceTexture") || sStr.contains("SurfaceView")) {
+                        boolean isPreview = sStr.contains("SurfaceTexture") || sStr.contains("SurfaceView") || sStr.contains("BLAST") || sStr.contains("Surface");
+
+                        if (isPreview) {
                             module.registerPreviewSurface(surface);
                         }
-                        
-                        if (sStr.contains("SurfaceTexture") && !module.getPreviewSwapped()) {
-                            module.logHook("[!] Action: Hijacking Preview Surface via OutputConfiguration");
+
+                        if (isPreview && !module.getPreviewSwapped()) {
+                            String surfaceType = sStr.contains("SurfaceView") ? "SurfaceView" : "SurfaceTexture";
+                            module.recordPipelineNode("Camera2(" + surfaceType + ")");
+                            module.logHook("[!] Action: Hijacking Preview Surface via OutputConfiguration (" + sStr + ")");
                             module.setPreviewSwapped(true);
                             module.handleModernPreview(surface);
-                            
+
                             Object[] newArgs = chain.getArgs().toArray();
-                            newArgs[0] = module.getDummySurface();
+                            newArgs[surfaceIndex] = module.getDummySurface();
                             return chain.proceed(newArgs);
                         }
                     }
@@ -119,6 +135,7 @@ public class Camera2Hook {
 
                     if (intent != null && intent == CaptureRequest.CONTROL_CAPTURE_INTENT_STILL_CAPTURE) {
                         module.logHook("[*] Activity: addTarget [STILL_CAPTURE]");
+                        module.recordPipelineNode("Camera2(StillCapture)");
                         module.triggerCaptureState();
                         return chain.proceed();
                     }

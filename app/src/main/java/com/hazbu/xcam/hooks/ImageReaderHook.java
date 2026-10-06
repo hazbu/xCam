@@ -177,6 +177,7 @@ public class ImageReaderHook {
         }
 
         if (module.getMediaPath() != null && format == ImageFormat.YUV_420_888) {
+            module.recordPipelineNode("ImageReader(YUV)");
             module.injectYuvFrame(image, w, h);
             if (injectedFlows.add(key)) {
                 module.logHook("[+] Activity: ImageReader YUV replacement active: " + key);
@@ -197,6 +198,8 @@ public class ImageReaderHook {
                                 return;
                             }
                             buffer.put(replacement);
+                            module.recordPipelineNode("ImageReader(JPEG)");
+                            module.reportPipelineCapture(w, h, replacement);
                             module.logHook("[+] Activity: ImageReader JPEG replaced successfully (" + replacement.length + " bytes)");
                         }
                     }

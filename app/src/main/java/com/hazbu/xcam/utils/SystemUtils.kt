@@ -20,6 +20,16 @@ object SystemUtils {
         }
     }
 
+    fun getCurrentApplication(): Application? {
+        return try {
+            val activityThreadClass = Class.forName("android.app.ActivityThread")
+            val currentAppMethod = activityThreadClass.getMethod("currentApplication")
+            currentAppMethod.invoke(null) as? Application
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     @SuppressLint("DiscouragedPrivateApi")
     fun getSurfaceId(surface: Surface?): Long {
         if (surface == null) return -1L

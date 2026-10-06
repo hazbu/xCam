@@ -20,6 +20,20 @@ class YuvFrameProcessor {
         val v: ByteArray,
     )
 
+    fun injectYuvFrame(image: Image, frame: MediaCodecYuvDecoder.YuvFrame) {
+        val planes = image.planes
+        if (planes.size < 3) return
+
+        val w = image.width.coerceAtMost(frame.width)
+        val h = image.height.coerceAtMost(frame.height)
+        val chromaW = ((image.width + 1) / 2).coerceAtMost((frame.width + 1) / 2)
+        val chromaH = ((image.height + 1) / 2).coerceAtMost((frame.height + 1) / 2)
+
+        writePlane(planes[0], frame.yPlane, w, h)
+        writePlane(planes[1], frame.uPlane, chromaW, chromaH)
+        writePlane(planes[2], frame.vPlane, chromaW, chromaH)
+    }
+
     fun injectToImage(image: Image, jpeg: ByteArray) {
         val width = image.width
         val height = image.height

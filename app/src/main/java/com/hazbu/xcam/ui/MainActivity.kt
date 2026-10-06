@@ -1,9 +1,12 @@
 package com.hazbu.xcam.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -16,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
@@ -23,13 +27,21 @@ import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.hazbu.xcam.R
+import com.hazbu.xcam.data.Constants.KEY_ENABLE_CAPTURE_NOTIF
 import com.hazbu.xcam.data.Constants.KEY_IS_MIRRORED
+import com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_APP
+import com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_ROUTE
+import com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_TIME
 import com.hazbu.xcam.data.Constants.KEY_ROTATION_ANGLE
 import com.hazbu.xcam.data.Constants.KEY_MEDIA_PATH
 import com.hazbu.xcam.data.Constants.PREFS_NAME
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 
@@ -52,9 +64,25 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
     private lateinit var cardScopedApps: com.google.android.material.card.MaterialCardView
     private lateinit var layoutScopedApps: LinearLayout
 
+    private lateinit var switchCaptureNotif: MaterialSwitch
+    private lateinit var tvPipelineEmpty: TextView
+    private lateinit var layoutPipelineDetails: LinearLayout
+    private lateinit var tvPipelineApp: TextView
+    private lateinit var tvPipelineRoute: TextView
+    private lateinit var tvPipelineTime: TextView
+    private lateinit var btnClearPipeline: MaterialButton
+
     private var isMirrored = false
     private var rotationAngle = 0
     private var mXposedService: XposedService? = null
+
+    private val notifPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(this, "Izin notifikasi dibutuhkan untuk Heads-up Card", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private val videoPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -145,6 +173,36 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
         cardModuleStatus = findViewById(R.id.card_module_status)
         cardScopedApps = findViewById(R.id.card_scoped_apps)
         layoutScopedApps = findViewById(R.id.layout_scoped_apps)
+
+        switchCaptureNotif = findViewById(R.id.switch_capture_notif)
+        tvPipelineEmpty = findViewById(R.id.tv_pipeline_empty)
+        layoutPipelineDetails = findViewById(R.id.layout_pipeline_details)
+        tvPipelineApp = findViewById(R.id.tv_pipeline_app)
+        tvPipelineRoute = findViewById(R.id.tv_pipeline_route)
+        tvPipelineTime = findViewById(R.id.tv_pipeline_time)
+        btnClearPipeline = findViewById(R.id.btn_clear_pipeline)
+
+        switchCaptureNotif.setOnCheckedChangeListener { _, isChecked ->
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
+                putBoolean(KEY_ENABLE_CAPTURE_NOTIF, isChecked)
+            }
+            if (isChecked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        }
+
+        btnClearPipeline.setOnClickListener {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
+                remove(KEY_LATEST_PIPELINE_APP)
+                remove(KEY_LATEST_PIPELINE_ROUTE)
+                remove(KEY_LATEST_PIPELINE_TIME)
+            }
+            loadTelemetryUI()
+            Toast.makeText(this, "Riwayat pipeline dibersihkan", Toast.LENGTH_SHORT).show()
+        }
+
         btnMirror.setOnClickListener {
             isMirrored = !isMirrored
             saveSettings()
@@ -230,8 +288,29 @@ class MainActivity : AppCompatActivity(), XposedServiceHelper.OnServiceListener 
         val mediaPath = prefs.getString(KEY_MEDIA_PATH, "") ?: ""
         isMirrored = prefs.getBoolean(KEY_IS_MIRRORED, false)
         rotationAngle = prefs.getInt(KEY_ROTATION_ANGLE, 0)
+        switchCaptureNotif.isChecked = prefs.getBoolean(KEY_ENABLE_CAPTURE_NOTIF, true)
         updatePreview(mediaPath)
         updatePreviewTransform()
+        loadTelemetryUI()
+    }
+
+    private fun loadTelemetryUI() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val app = prefs.getString(KEY_LATEST_PIPELINE_APP, "") ?: ""
+        val route = prefs.getString(KEY_LATEST_PIPELINE_ROUTE, "") ?: ""
+        val time = prefs.getLong(KEY_LATEST_PIPELINE_TIME, 0L)
+
+        if (app.isEmpty() || route.isEmpty()) {
+            tvPipelineEmpty.visibility = View.VISIBLE
+            layoutPipelineDetails.visibility = View.GONE
+        } else {
+            tvPipelineEmpty.visibility = View.GONE
+            layoutPipelineDetails.visibility = View.VISIBLE
+            tvPipelineApp.text = getString(R.string.label_last_active_app, app)
+            tvPipelineRoute.text = route
+            val formatted = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(time))
+            tvPipelineTime.text = getString(R.string.label_last_timestamp, formatted)
+        }
     }
 
     private fun updatePreviewTransform() {

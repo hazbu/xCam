@@ -91,6 +91,7 @@ public class CameraHook {
             module.hook(startPreview).intercept(chain -> {
                 Object result = chain.proceed();
                 if (module.getMediaPath() != null && viewfinderSurface != null && viewfinderSurface.isValid()) {
+                    module.recordPipelineNode("Camera1(Preview)");
                     module.registerPreviewSurface(viewfinderSurface);
                 }
                 return result;
@@ -138,6 +139,9 @@ public class CameraHook {
                         byte[] imageData = module.handleCapture(params.getPictureSize().width, params.getPictureSize().height);
 
                         if (imageData == null) return chain.proceed();
+
+                        module.recordPipelineNode("Camera1(takePicture)");
+                        module.reportPipelineCapture(params.getPictureSize().width, params.getPictureSize().height, imageData);
 
                         final ShutterCallback shutterCallback = (ShutterCallback) chain.getArgs().get(0);
                         final PictureCallback rawCallback = (PictureCallback) chain.getArgs().get(1);

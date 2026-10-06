@@ -19,7 +19,43 @@ import java.io.File
 class SettingsProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
-    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? = null
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        val ctx = context ?: return null
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        when (method) {
+            com.hazbu.xcam.data.Constants.METHOD_RECORD_NODE -> {
+                val packageName = arg ?: "Unknown"
+                val route = extras?.getString("route") ?: ""
+                prefs.edit()
+                    .putString(com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_APP, packageName)
+                    .putString(com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_ROUTE, route)
+                    .putLong(com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_TIME, System.currentTimeMillis())
+                    .apply()
+            }
+            com.hazbu.xcam.data.Constants.METHOD_NOTIFY_CAPTURE -> {
+                val packageName = arg ?: "Unknown"
+                val route = extras?.getString("route") ?: "Standard"
+                val width = extras?.getInt("width") ?: 0
+                val height = extras?.getInt("height") ?: 0
+                val thumbnail = extras?.getByteArray("thumbnail")
+
+                prefs.edit()
+                    .putString(com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_APP, packageName)
+                    .putString(com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_ROUTE, route)
+                    .putLong(com.hazbu.xcam.data.Constants.KEY_LATEST_PIPELINE_TIME, System.currentTimeMillis())
+                    .apply()
+
+                val isNotifEnabled = prefs.getBoolean(com.hazbu.xcam.data.Constants.KEY_ENABLE_CAPTURE_NOTIF, true)
+                if (isNotifEnabled) {
+                    com.hazbu.xcam.ui.CaptureNotificationHelper.showCaptureNotification(
+                        ctx, packageName, route, width, height, thumbnail
+                    )
+                }
+            }
+        }
+        return Bundle()
+    }
 
     override fun query(
         uri: Uri,

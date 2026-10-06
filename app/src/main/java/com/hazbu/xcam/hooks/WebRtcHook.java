@@ -66,6 +66,7 @@ public final class WebRtcHook {
             if (!(value instanceof SurfaceTexture)) return;
             Surface surface = new Surface((SurfaceTexture) value);
             try {
+                module.recordPipelineNode("WebRTC(TextureHelper)");
                 module.registerPreviewSurface(surface);
                 module.logHook("[+] Activity: WebRTC Camera frame surface registered");
             } finally {

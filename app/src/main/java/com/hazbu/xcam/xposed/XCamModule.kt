@@ -6,13 +6,16 @@ import android.os.Build
 import android.view.Surface
 import android.view.SurfaceHolder
 import androidx.media3.common.util.UnstableApi
+import com.hazbu.xcam.core.audio.MediaCodecAudioDecoder
 import com.hazbu.xcam.core.capture.CaptureManager
+import com.hazbu.xcam.core.capture.MediaCodecYuvDecoder
 import com.hazbu.xcam.core.capture.YuvFrameProcessor
 import com.hazbu.xcam.core.engine.MediaEngine
 import com.hazbu.xcam.core.engine.XCamEngine
 import com.hazbu.xcam.core.settings.SettingsManager
 import com.hazbu.xcam.core.surface.SurfaceManager
 import com.hazbu.xcam.core.surface.SurfaceProvider
+import com.hazbu.xcam.core.telemetry.PipelineTracker
 import com.hazbu.xcam.utils.Logger
 import com.hazbu.xcam.utils.SystemUtils
 import com.hazbu.xcam.utils.UIUtils
@@ -25,6 +28,8 @@ class XCamModule : XposedModule() {
     private var mContext: Context? = null
     private var hooksInstalled = false
     private val ignoreHooks = ThreadLocal.withInitial { false }
+    private var yuvDecoder: MediaCodecYuvDecoder? = null
+    private var audioDecoder: MediaCodecAudioDecoder? = null
     
     private val injectors = XCamInjectors(this)
     private val settings = SettingsManager()
@@ -81,21 +86,76 @@ class XCamModule : XposedModule() {
     fun incrementSessionGeneration() = surfaceManager.incrementSessionGeneration()
     fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(false) // Force clear on new session
 
+    // Pipeline Telemetry
+    fun recordPipelineNode(node: String) {
+        PipelineTracker.recordNode(mContext, node)
+    }
+
+    @JvmOverloads
+    fun reportPipelineCapture(width: Int = 0, height: Int = 0, thumbnail: ByteArray? = null) {
+        PipelineTracker.reportCapture(mContext, width, height, thumbnail)
+    }
+
     // Frame Processing
     fun injectYuvFrame(image: android.media.Image, width: Int, height: Int) {
+        val path = settings.mediaPath
+        val ctx = mContext
+        if (path != null && ctx != null && path.lowercase().endsWith(".mp4")) {
+            if (yuvDecoder == null) {
+                yuvDecoder = MediaCodecYuvDecoder(ctx, path) { printLog(it) }.apply { start() }
+            }
+            val frame = yuvDecoder?.latestFrame
+            if (frame != null) {
+                yuvProcessor.injectYuvFrame(image, frame)
+                return
+            }
+        }
+
+        // Fallback for non-mp4 or when decoder not ready yet
         val jpeg = handleStreamFrame(width, height) ?: return
         yuvProcessor.injectToImage(image, jpeg)
     }
 
     // Engine Delegation
     fun stopEngine() {
+        yuvDecoder?.stop()
+        yuvDecoder = null
+        audioDecoder?.stop()
+        audioDecoder = null
         engine.stop()
         captureManager.reset()
     }
     fun handleCamera1Preview(st: SurfaceTexture) = engine.handleCamera1Preview(st)
     fun handleModernPreview(s: Surface) = engine.handleModernPreview(s)
-    fun handleSurfaceViewPreview(h: SurfaceHolder) = engine.handleSurfaceViewPreview(h)
     fun getDummySurface() = engine.getDummySurface()
+
+    // Audio Injection
+    fun injectAudioBytes(buffer: ByteArray, offset: Int, length: Int) {
+        val path = settings.mediaPath ?: return
+        val ctx = mContext ?: return
+        if (audioDecoder == null) {
+            audioDecoder = MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }
+        }
+        audioDecoder?.readBytes(buffer, offset, length)
+    }
+
+    fun injectAudioShorts(buffer: ShortArray, offset: Int, length: Int) {
+        val path = settings.mediaPath ?: return
+        val ctx = mContext ?: return
+        if (audioDecoder == null) {
+            audioDecoder = MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }
+        }
+        audioDecoder?.readShorts(buffer, offset, length)
+    }
+
+    fun injectAudioByteBuffer(buffer: java.nio.ByteBuffer, length: Int) {
+        val path = settings.mediaPath ?: return
+        val ctx = mContext ?: return
+        if (audioDecoder == null) {
+            audioDecoder = MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }
+        }
+        audioDecoder?.readByteBuffer(buffer, length)
+    }
 
     // Capture Delegation
     @JvmOverloads
@@ -125,6 +185,7 @@ class XCamModule : XposedModule() {
 
         incrementSessionGeneration()
         clearPreviewSurfaces()
+        PipelineTracker.reset()
         logInit(">>> ACTIVE IN: $processName (API ${Build.VERSION.SDK_INT}) <<<")
         hookContextInit()
         injectors.install(param)
@@ -138,6 +199,14 @@ class XCamModule : XposedModule() {
     }
 
     private fun hookContextInit() {
+        val currentApp = SystemUtils.getCurrentApplication()
+        if (currentApp != null && !isInitialized) {
+            mContext = currentApp
+            logInit("Context immediately resolved from ActivityThread: ${mContext?.packageName}")
+            mContext?.let { settings.refreshSettings(it) }
+            isInitialized = true
+        }
+
         try {
             val attachMethod = Class.forName("android.content.ContextWrapper")
                 .getDeclaredMethod("attachBaseContext", Context::class.java)

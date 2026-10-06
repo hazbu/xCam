@@ -70,14 +70,6 @@ class XCamEngine(
         uiHandler.post { processInjection(surface) }
     }
 
-    fun handleSurfaceViewPreview(holder: SurfaceHolder) {
-        uiHandler.post {
-            if (surfaceManager.isPreviewSurface(holder.surface)) {
-                processInjection(holder.surface)
-            }
-        }
-    }
-
     private fun processInjection(surface: Surface) {
         val context = contextProvider() ?: return
         val path = settingsProvider().mediaPath ?: return
