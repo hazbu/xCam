@@ -5,7 +5,6 @@ import android.graphics.SurfaceTexture
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
-import android.view.SurfaceHolder
 import androidx.media3.common.util.UnstableApi
 import com.hazbu.xcam.core.settings.SettingsManager
 import com.hazbu.xcam.core.surface.SurfaceManager

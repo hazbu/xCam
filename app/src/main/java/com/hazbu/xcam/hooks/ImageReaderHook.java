@@ -140,10 +140,6 @@ public class ImageReaderHook {
                 Method acquireLatest = ImageReader.class.getDeclaredMethod("acquireLatestImage");
                 module.hook(acquireLatest).intercept(chain -> {
                     ImageReader reader = (ImageReader) chain.getThisObject();
-                    ReaderMetadata meta = readerTracker.get(reader);
-                    if (meta != null && meta.width == 960 && meta.format == ImageFormat.YUV_420_888) {
-                         module.logHook("[*] ImageReader.acquireLatestImage | Reader: " + meta + " | Thread: " + Thread.currentThread().getName());
-                    }
                     Object result = chain.proceed();
                     if (result instanceof Image) {
                         processAcquiredImage(reader, (Image) result);
@@ -157,10 +153,6 @@ public class ImageReaderHook {
                 Method acquireNext = ImageReader.class.getDeclaredMethod("acquireNextImage");
                 module.hook(acquireNext).intercept(chain -> {
                     ImageReader reader = (ImageReader) chain.getThisObject();
-                    ReaderMetadata meta = readerTracker.get(reader);
-                    if (meta != null && meta.width == 960 && meta.format == ImageFormat.YUV_420_888) {
-                        module.logHook("[*] ImageReader.acquireNextImage | Reader: " + meta + " | Thread: " + Thread.currentThread().getName());
-                    }
                     Object result = chain.proceed();
                     if (result instanceof Image) {
                         processAcquiredImage(reader, (Image) result);

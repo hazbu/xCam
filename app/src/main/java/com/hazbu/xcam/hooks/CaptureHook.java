@@ -338,6 +338,7 @@ public class CaptureHook {
             android.content.Context ctx = module.getContext();
             if (ctx != null && recordDurationMs > 300) {
                 try {
+                    module.setIgnoringHooks(true);
                     replaced = com.hazbu.xcam.utils.MediaRemuxer.INSTANCE.trimVideo(
                         ctx,
                         mediaPath,
@@ -355,6 +356,8 @@ public class CaptureHook {
                     }
                 } catch (Throwable t) {
                     module.logHook("[!] Trimming attempt failed: " + t.getMessage());
+                } finally {
+                    module.setIgnoringHooks(false);
                 }
             }
 
@@ -484,6 +487,7 @@ public class CaptureHook {
             Class<?> mcClass = param.getClassLoader().loadClass("android.media.MediaCodec");
             Method createInputSurface = mcClass.getDeclaredMethod("createInputSurface");
             module.hook(createInputSurface).intercept(chain -> {
+                if (module.isIgnoringHooks()) return chain.proceed();
                 module.recordPipelineNode("MediaCodec(InputSurface)");
                 module.logHook("[*] Activity: MediaCodec#createInputSurface");
                 return chain.proceed();

@@ -5,7 +5,6 @@ import io.github.libxposed.api.XposedInterface
 
 object Logger {
     private const val TAG = "xCam"
-    private const val VERSION = "v22.14-master"
 
     enum class Level(val xPriority: Int) {
         DEBUG(XposedInterface.PRIORITY_DEFAULT),
@@ -19,7 +18,7 @@ object Logger {
     fun e(xi: XposedInterface?, msg: String, tr: Throwable? = null) = printLog(xi, msg, Level.ERROR, tr)
 
     fun printLog(xi: XposedInterface?, msg: String, level: Level = Level.ERROR, tr: Throwable? = null) {
-        val fullMsg = "[$VERSION] $msg"
+        val fullMsg = msg
         
         if (xi != null) {
             val finalMsg = if (tr != null) "$fullMsg\n${Log.getStackTraceString(tr)}" else fullMsg

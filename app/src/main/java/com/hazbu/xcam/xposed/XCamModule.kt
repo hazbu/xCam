@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.SurfaceTexture
 import android.os.Build
 import android.view.Surface
-import android.view.SurfaceHolder
 import androidx.media3.common.util.UnstableApi
 import com.hazbu.xcam.core.audio.MediaCodecAudioDecoder
 import com.hazbu.xcam.core.capture.CaptureManager

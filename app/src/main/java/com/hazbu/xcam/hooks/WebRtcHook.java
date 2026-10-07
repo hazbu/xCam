@@ -17,6 +17,7 @@ import io.github.libxposed.api.XposedModuleInterface;
  */
 public final class WebRtcHook {
     private final XCamModule module;
+    private Surface helperSurface;
 
     public WebRtcHook(XCamModule module) {
         this.module = module;
@@ -51,6 +52,10 @@ public final class WebRtcHook {
         Method stopListening = helper.getDeclaredMethod("stopListening");
         module.hook(stopListening).intercept(chain -> {
             module.logHook("[*] Activity: WebRTC SurfaceTextureHelper stopped");
+            if (helperSurface != null) {
+                try { helperSurface.release(); } catch (Throwable ignored) {}
+                helperSurface = null;
+            }
             return chain.proceed();
         });
         module.logHook("[+] Hooked: SurfaceTextureHelper#stopListening");
@@ -61,14 +66,13 @@ public final class WebRtcHook {
             Method getter = helper.getClass().getMethod("getSurfaceTexture");
             Object value = getter.invoke(helper);
             if (!(value instanceof SurfaceTexture)) return;
-            Surface surface = new Surface((SurfaceTexture) value);
-            try {
-                module.recordPipelineNode("WebRTC(TextureHelper)");
-                module.registerPreviewSurface(surface);
-                module.logHook("[+] Activity: WebRTC Camera frame surface registered");
-            } finally {
-                surface.release();
+            if (helperSurface != null) {
+                try { helperSurface.release(); } catch (Throwable ignored) {}
             }
+            helperSurface = new Surface((SurfaceTexture) value);
+            module.recordPipelineNode("WebRTC(TextureHelper)");
+            module.registerPreviewSurface(helperSurface);
+            module.logHook("[+] Activity: WebRTC Camera frame surface registered");
         } catch (Throwable t) {
             module.logHook("[!] WebRTC: Could not register frame surface: " + t.getMessage());
         }
