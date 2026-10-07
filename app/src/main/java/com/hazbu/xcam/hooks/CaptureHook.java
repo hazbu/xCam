@@ -46,6 +46,8 @@ public class CaptureHook {
 
     private final Map<Object, RecorderTarget> recorderTargets = new ConcurrentHashMap<>();
     private volatile RecorderTarget lastRecorderTarget;
+    private volatile long lastStartMediaPosMs = 0;
+    private volatile long lastStartWallClockMs = 0;
 
     public CaptureHook(XCamModule module, ImageReaderHook imageReaderHook) {
         this.module = module;
@@ -282,6 +284,11 @@ public class CaptureHook {
     }
 
     private void recordStartTime(Object recorder) {
+        long currentPos = module.getCurrentPosition();
+        long now = System.currentTimeMillis();
+        lastStartMediaPosMs = currentPos;
+        lastStartWallClockMs = now;
+
         RecorderTarget target = null;
         if (recorder != null) {
             target = recorderTargets.get(recorder);
@@ -290,10 +297,10 @@ public class CaptureHook {
             target = lastRecorderTarget;
         }
         if (target != null) {
-            target.startMediaPosMs = module.getCurrentPosition();
-            target.startWallClockMs = System.currentTimeMillis();
-            module.logHook("[*] MediaRecorder#start timing captured: StartMediaPos=" + target.startMediaPosMs + " ms, WallClock=" + target.startWallClockMs);
+            target.startMediaPosMs = currentPos;
+            target.startWallClockMs = now;
         }
+        module.logHook("[*] MediaRecorder#start timing captured: StartMediaPos=" + currentPos + " ms, WallClock=" + now);
     }
 
     private void replaceMediaRecorderOutput(Object recorder) {
@@ -317,9 +324,11 @@ public class CaptureHook {
         }
 
         long stopWallClockMs = System.currentTimeMillis();
-        long recordDurationMs = (target.startWallClockMs > 0) ? (stopWallClockMs - target.startWallClockMs) : 0;
-        long startMediaPosMs = target.startMediaPosMs;
+        long startWallClock = (target.startWallClockMs > 0) ? target.startWallClockMs : lastStartWallClockMs;
+        long startMediaPosMs = (target.startMediaPosMs > 0) ? target.startMediaPosMs : lastStartMediaPosMs;
+        long recordDurationMs = (startWallClock > 0) ? (stopWallClockMs - startWallClock) : 0;
         module.logHook("[*] MediaRecorder#stop timing: Duration=" + recordDurationMs + " ms, StartMediaPos=" + startMediaPosMs + " ms");
+        module.showToast("Rec: " + (startMediaPosMs / 1000) + "s -> " + ((startMediaPosMs + recordDurationMs) / 1000) + "s");
 
         boolean replaced = false;
         long copiedBytes = 0;

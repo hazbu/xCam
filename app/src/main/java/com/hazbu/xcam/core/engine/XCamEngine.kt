@@ -49,7 +49,10 @@ class XCamEngine(
             return
         }
 
-        if ((st == lastST) && mediaEngine.isPlaying && lastInjectedGen == surfaceManager.sessionGeneration) return
+        if ((st == lastST) && mediaEngine.isPlaying) {
+            lastInjectedGen = surfaceManager.sessionGeneration
+            return
+        }
         lastST = st
         lastInjectedGen = surfaceManager.sessionGeneration
 
@@ -63,7 +66,10 @@ class XCamEngine(
 
     fun handleModernPreview(surface: Surface) {
         val currentGen = surfaceManager.sessionGeneration
-        if (surface == lastModernSurface && mediaEngine.isPlaying && lastInjectedGen == currentGen) return
+        if (surface == lastModernSurface && mediaEngine.isPlaying) {
+            lastInjectedGen = currentGen
+            return
+        }
         lastModernSurface = surface
         uiHandler.post { processInjection(surface) }
     }
@@ -82,7 +88,10 @@ class XCamEngine(
             val currentGen = surfaceManager.sessionGeneration
             val settings = settingsProvider()
 
-            if (id == lastInjectedSurfaceId && mediaEngine.isPlaying && currentGen == lastInjectedGen) return
+            if (id == lastInjectedSurfaceId && mediaEngine.isPlaying) {
+                lastInjectedGen = currentGen
+                return
+            }
 
             logPipe("Injection: ID=$id Gen=$currentGen")
             mediaEngine.stop()

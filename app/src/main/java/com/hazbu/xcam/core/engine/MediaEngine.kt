@@ -43,10 +43,24 @@ class MediaEngine(private val logAction: (String) -> Unit) {
         get() = isPlayingInternal
 
     val currentPosition: Long
-        get() = if (Looper.myLooper() == Looper.getMainLooper()) {
-            player?.currentPosition ?: 0L
-        } else {
-            currentPositionInternal
+        get() {
+            val p = player ?: return currentPositionInternal
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                val pos = p.currentPosition
+                currentPositionInternal = pos
+                return pos
+            }
+            val future = java.util.concurrent.FutureTask {
+                val pos = p.currentPosition
+                currentPositionInternal = pos
+                pos
+            }
+            mainHandler.post(future)
+            return try {
+                future.get(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } catch (_: Throwable) {
+                currentPositionInternal
+            }
         }
 
     private fun log(tag: String, msg: String) {
