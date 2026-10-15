@@ -29,10 +29,10 @@
             android:value="Virtual Camera Injection for Images and Videos with Rotation and Mirroring support." />
         <meta-data
             android:name="xposedminversion"
-            android:value="101" />
+            android:value="100" />
         <meta-data
             android:name="xposedapi"
-            android:value="101" />
+            android:value="102" />
 
         <provider
             android:name="io.github.libxposed.service.XposedProvider"

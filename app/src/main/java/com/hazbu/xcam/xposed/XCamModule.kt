@@ -209,11 +209,79 @@ class XCamModule : XposedModule() {
         { setIgnoringHooks(it) },
     )
 
+    override fun onHotReloading(param: XposedModuleInterface.HotReloadingParam): Boolean {
+        logInit(">>> ON_HOT_RELOADING (Retiring generation) <<<")
+        return try {
+            stopEngine()
+            clearPreviewSurfaces()
+            true
+        } catch (t: Throwable) {
+            printLog("Error during onHotReloading", t)
+            false
+        }
+    }
+
+    override fun onHotReloaded(param: XposedModuleInterface.HotReloadedParam) {
+        logInit(">>> ON_HOT_RELOADED in ${param.processName} <<<")
+        runCatching {
+            super.onHotReloaded(param)
+        }.onFailure {
+            printLog("Error unhooking previous generation handles", it)
+        }
+
+        hooksInstalled = false
+        isInitialized = false
+        mContext = null
+        incrementSessionGeneration()
+        clearPreviewSurfaces()
+        PipelineTracker.reset()
+
+        val processName = param.processName
+        val currentApp = SystemUtils.getCurrentApplication()
+        val classLoader = currentApp?.classLoader
+            ?: Thread.currentThread().contextClassLoader
+            ?: ClassLoader.getSystemClassLoader()
+
+        val packageName = currentApp?.packageName ?: processName
+
+        if (packageName == "com.hazbu.xcam" || processName == "com.hazbu.xcam") {
+            hookManagerApp(classLoader)
+            return
+        }
+
+        if (!processName.contains(packageName) && !packageName.contains(processName)) {
+            return
+        }
+
+        hooksInstalled = true
+        logInit(">>> RE-INSTALLING HOOKS IN: $processName <<<")
+        hookContextInit()
+
+        val appInfo = currentApp?.applicationInfo ?: android.content.pm.ApplicationInfo().apply {
+            this.packageName = packageName
+        }
+
+        val syntheticParam = object : XposedModuleInterface.PackageReadyParam {
+            override fun getPackageName(): String = packageName
+            override fun getApplicationInfo(): android.content.pm.ApplicationInfo = appInfo
+            override fun isFirstPackage(): Boolean = true
+            override fun getDefaultClassLoader(): ClassLoader = classLoader
+            override fun getClassLoader(): ClassLoader = classLoader
+            override fun getAppComponentFactory(): android.app.AppComponentFactory = android.app.AppComponentFactory()
+        }
+
+        try {
+            injectors.install(syntheticParam)
+        } catch (t: Throwable) {
+            printLog("Error reinstalling hooks during hot reload", t)
+        }
+    }
+
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         super.onPackageReady(param)
         val processName = SystemUtils.getProcessNameStrict()
         if (param.packageName == "com.hazbu.xcam") {
-            hookManagerApp(param)
+            hookManagerApp(param.classLoader)
             return
         }
         
@@ -229,9 +297,9 @@ class XCamModule : XposedModule() {
         injectors.install(param)
     }
 
-    private fun hookManagerApp(param: XposedModuleInterface.PackageReadyParam) {
+    private fun hookManagerApp(classLoader: ClassLoader) {
         try {
-            val clazz = param.classLoader.loadClass("com.hazbu.xcam.ui.MainActivity")
+            val clazz = classLoader.loadClass("com.hazbu.xcam.ui.MainActivity")
             hook(clazz.getDeclaredMethod("checkSelfActive")).intercept { true }
         } catch (_: Throwable) {}
     }
