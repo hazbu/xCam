@@ -1,6 +1,8 @@
 package com.hazbu.xcam.hooks;
 
 import android.annotation.SuppressLint;
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.view.Surface;
@@ -31,6 +33,7 @@ public class Camera2Hook {
             hookDiscovery(param);
             hookModernHijack(param);
             hookSurgicalDiverter(param);
+            hookCaptureFailed(param);
             hookCleanup(param);
             module.logHook("[+] Camera2 API hooks installed successfully");
         } catch (Throwable t) {
@@ -64,9 +67,11 @@ public class Camera2Hook {
         if (arg instanceof Surface) {
             Surface s = (Surface) arg;
             module.logSessionOutput(s);
-            String sStr = s.toString();
-            if (sStr.contains("SurfaceTexture") || sStr.contains("SurfaceView") || sStr.contains("BLAST") || sStr.contains("Surface")) {
-                module.registerPreviewSurface(s);
+            if (!module.isNonPreviewSurface(s)) {
+                String sStr = s.toString();
+                if (sStr.contains("SurfaceTexture") || sStr.contains("SurfaceView") || sStr.contains("BLAST")) {
+                    module.registerPreviewSurface(s);
+                }
             }
         } else if (arg instanceof OutputConfiguration) {
             Surface s = ((OutputConfiguration) arg).getSurface();
@@ -95,8 +100,15 @@ public class Camera2Hook {
                     }
 
                     if (surface != null) {
+                        if (module.isNonPreviewSurface(surface)) {
+                            return chain.proceed();
+                        }
+
                         String sStr = surface.toString();
-                        boolean isPreview = sStr.contains("SurfaceTexture") || sStr.contains("SurfaceView") || sStr.contains("BLAST") || sStr.contains("Surface");
+                        boolean isPreview = module.isPreviewSurface(surface) ||
+                                sStr.contains("SurfaceTexture") ||
+                                sStr.contains("SurfaceView") ||
+                                sStr.contains("BLAST");
 
                         if (isPreview) {
                             module.registerPreviewSurface(surface);
@@ -160,8 +172,43 @@ public class Camera2Hook {
                 return chain.proceed();
             });
             module.logHook("[+] Hooked: CaptureRequest.Builder#addTarget");
+
+            try {
+                Method removeTarget = CaptureRequest.Builder.class.getDeclaredMethod("removeTarget", Surface.class);
+                module.hook(removeTarget).intercept(chain -> {
+                    Surface surface = (Surface) chain.getArgs().get(0);
+                    if (surface != null) {
+                        module.logHook("[*] Activity: removeTarget (" + surface + ")");
+                    }
+                    return chain.proceed();
+                });
+                module.logHook("[+] Hooked: CaptureRequest.Builder#removeTarget");
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             module.logHook("[!] Surgical Diverter hook failed: " + t.getMessage());
+        }
+    }
+
+    private void hookCaptureFailed(XposedModuleInterface.PackageReadyParam param) {
+        try {
+            Method method = CameraCaptureSession.CaptureCallback.class.getDeclaredMethod(
+                "onCaptureFailed",
+                CameraCaptureSession.class,
+                CaptureRequest.class,
+                CaptureFailure.class
+            );
+            module.hook(method).intercept(chain -> {
+                try {
+                    CaptureFailure failure = (CaptureFailure) chain.getArgs().get(2);
+                    if (failure != null) {
+                        module.logHook("[!] Camera2 CaptureCallback#onCaptureFailed reason: " + failure.getReason());
+                    }
+                } catch (Throwable ignored) {}
+                return chain.proceed();
+            });
+            module.logHook("[+] Hooked: CaptureCallback#onCaptureFailed");
+        } catch (Throwable t) {
+            module.logHook("[!] Hook CaptureCallback#onCaptureFailed failed: " + t.getMessage());
         }
     }
 

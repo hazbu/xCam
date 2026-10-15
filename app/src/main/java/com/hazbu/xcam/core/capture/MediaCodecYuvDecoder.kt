@@ -168,45 +168,61 @@ class MediaCodecYuvDecoder(
         val height = image.height
         val planes = image.planes
 
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
-
         val ySize = width * height
-        val uvSize = ((width + 1) / 2) * ((height + 1) / 2)
+        val cw = (width + 1) / 2
+        val ch = (height + 1) / 2
+        val uvSize = cw * ch
 
         val yBytes = ByteArray(ySize)
         val uBytes = ByteArray(uvSize)
         val vBytes = ByteArray(uvSize)
 
-        copyPlane(planes[0], yBytes, width, height)
-        copyPlane(planes[1], uBytes, (width + 1) / 2, (height + 1) / 2)
-        copyPlane(planes[2], vBytes, (width + 1) / 2, (height + 1) / 2)
+        // Y plane
+        val yPlane = planes[0]
+        val yBuf = yPlane.buffer.duplicate()
+        val yRowStride = yPlane.rowStride
+        val yPixelStride = yPlane.pixelStride
+        val yPos = yBuf.position()
 
-        return YuvFrame(width, height, yBytes, uBytes, vBytes, System.nanoTime())
-    }
-
-    private fun copyPlane(plane: Image.Plane, outBytes: ByteArray, width: Int, height: Int) {
-        val buffer = plane.buffer
-        val rowStride = plane.rowStride
-        val pixelStride = plane.pixelStride
-
-        if (pixelStride == 1 && rowStride == width) {
-            buffer.get(outBytes, 0, outBytes.size.coerceAtMost(buffer.remaining()))
-            return
-        }
-
-        var outPos = 0
-        val rowBuffer = ByteArray(rowStride)
-        for (row in 0 until height) {
-            val bytesToRead = rowStride.coerceAtMost(buffer.remaining())
-            buffer.get(rowBuffer, 0, bytesToRead)
-            for (col in 0 until width) {
-                val inPos = col * pixelStride
-                if (inPos < bytesToRead && outPos < outBytes.size) {
-                    outBytes[outPos++] = rowBuffer[inPos]
+        if (yPixelStride == 1 && yRowStride == width) {
+            yBuf.get(yBytes, 0, minOf(yBytes.size, yBuf.remaining()))
+        } else {
+            for (row in 0 until height) {
+                val rowStart = yPos + row * yRowStride
+                val dstBase = row * width
+                for (col in 0 until width) {
+                    yBytes[dstBase + col] = yBuf.get(rowStart + col * yPixelStride)
                 }
             }
         }
+
+        // U and V planes
+        val uPlane = planes[1]
+        val vPlane = planes[2]
+        val uBuf = uPlane.buffer.duplicate()
+        val vBuf = vPlane.buffer.duplicate()
+        val uRowStride = uPlane.rowStride
+        val uPixelStride = uPlane.pixelStride
+        val vRowStride = vPlane.rowStride
+        val vPixelStride = vPlane.pixelStride
+        val uPos = uBuf.position()
+        val vPos = vBuf.position()
+
+        if (uPixelStride == 1 && vPixelStride == 1 && uRowStride == cw && vRowStride == cw) {
+            uBuf.get(uBytes, 0, minOf(uBytes.size, uBuf.remaining()))
+            vBuf.get(vBytes, 0, minOf(vBytes.size, vBuf.remaining()))
+        } else {
+            for (row in 0 until ch) {
+                val uRowStart = uPos + row * uRowStride
+                val vRowStart = vPos + row * vRowStride
+                val dstBase = row * cw
+                for (col in 0 until cw) {
+                    uBytes[dstBase + col] = uBuf.get(uRowStart + col * uPixelStride)
+                    vBytes[dstBase + col] = vBuf.get(vRowStart + col * vPixelStride)
+                }
+            }
+        }
+
+        return YuvFrame(width, height, yBytes, uBytes, vBytes, System.nanoTime())
     }
 }

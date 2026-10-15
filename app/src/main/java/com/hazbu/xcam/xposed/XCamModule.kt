@@ -84,6 +84,7 @@ class XCamModule : XposedModule() {
     fun registerPreviewSurface(s: Surface) = surfaceManager.registerPreviewSurface(s)
     fun registerImageReaderSurface(s: Surface, f: Int, w: Int, h: Int) = surfaceManager.registerImageReaderSurface(s, f, w, h)
     fun isPreviewSurface(s: Surface?) = surfaceManager.isPreviewSurface(s)
+    fun isNonPreviewSurface(s: Surface?) = surfaceManager.isNonPreviewSurface(s)
     fun logSessionOutput(s: Surface) = surfaceManager.logSessionOutput(s)
     fun incrementSessionGeneration() = surfaceManager.incrementSessionGeneration()
     fun clearPreviewSurfaces() = surfaceManager.clearPreviewSurfaces(engine.isPlaying())
@@ -113,6 +114,31 @@ class XCamModule : XposedModule() {
 
         val jpeg = handleStreamFrame(width, height) ?: return
         yuvProcessor.injectToImage(image, jpeg)
+    }
+
+    fun handleNv21Frame(width: Int, height: Int): ByteArray? {
+        val path = settings.mediaPath ?: return null
+        val ctx = mContext ?: return null
+
+        if (path.lowercase().endsWith(".mp4")) {
+            if (yuvDecoder == null) {
+                yuvDecoder = MediaCodecYuvDecoder(ctx, path) { printLog(it) }.apply { start() }
+            }
+            val frame = yuvDecoder?.latestFrame
+            if (frame != null) {
+                return yuvProcessor.frameToNv21(frame, width, height)
+            }
+        }
+
+        val jpeg = handleStreamFrame(width, height) ?: return null
+        return try {
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return null
+            val nv21 = yuvProcessor.rgbToNv21(bmp, width, height)
+            bmp.recycle()
+            nv21
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     fun stopEngine() {

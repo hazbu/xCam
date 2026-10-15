@@ -57,6 +57,11 @@ class SurfaceManager(private val logAction: (String) -> Unit) {
         }
     }
 
+    fun isNonPreviewSurface(surface: Surface?): Boolean {
+        val id = surface?.id ?: return false
+        return nonPreviewIds.contains(id)
+    }
+
     fun logSessionOutput(surface: Surface) {
         log("[*] SESSION OUTPUT: id=${surface.id} preview=${previewIds.contains(surface.id)}")
     }

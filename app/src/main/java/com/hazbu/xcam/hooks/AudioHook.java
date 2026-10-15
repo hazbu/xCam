@@ -25,10 +25,39 @@ public class AudioHook {
     public void install(XposedModuleInterface.PackageReadyParam param) {
         try {
             module.logHook("[*] Initializing Microphone / AudioRecord Hooks");
+            hookAudioRecordLifecycle(param);
             hookAudioRecordRead(param);
             module.logHook("[+] Microphone / AudioRecord Hooks installed successfully");
         } catch (Throwable t) {
             module.logHook("[!] AudioRecord hook installation failed: " + t.getMessage());
+        }
+    }
+
+    private void hookAudioRecordLifecycle(XposedModuleInterface.PackageReadyParam param) {
+        try {
+            Class<?> audioRecordClass = param.getClassLoader().loadClass("android.media.AudioRecord");
+            Method startRecording = audioRecordClass.getDeclaredMethod("startRecording");
+            module.hook(startRecording).intercept(chain -> {
+                module.logHook("[*] Activity: AudioRecord#startRecording");
+                return chain.proceed();
+            });
+            module.logHook("[+] Hooked: AudioRecord#startRecording");
+
+            Method stop = audioRecordClass.getDeclaredMethod("stop");
+            module.hook(stop).intercept(chain -> {
+                module.logHook("[*] Activity: AudioRecord#stop");
+                return chain.proceed();
+            });
+            module.logHook("[+] Hooked: AudioRecord#stop");
+
+            Method release = audioRecordClass.getDeclaredMethod("release");
+            module.hook(release).intercept(chain -> {
+                module.logHook("[*] Activity: AudioRecord#release");
+                return chain.proceed();
+            });
+            module.logHook("[+] Hooked: AudioRecord#release");
+        } catch (Throwable t) {
+            module.logHook("[!] AudioRecord lifecycle hook failed: " + t.getMessage());
         }
     }
 

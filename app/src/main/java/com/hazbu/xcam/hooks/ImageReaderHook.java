@@ -3,6 +3,7 @@ package com.hazbu.xcam.hooks;
 import android.graphics.ImageFormat;
 import android.media.Image;
 import android.media.ImageReader;
+import android.os.Build;
 
 import androidx.annotation.NonNull;
 
@@ -14,6 +15,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.Executor;
 import io.github.libxposed.api.XposedModuleInterface;
 
 /**
@@ -125,6 +127,42 @@ public class ImageReaderHook {
                 }
             }
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                try {
+                    Class<?> builderClass = Class.forName("android.media.ImageReader$Builder", false, param.getClassLoader());
+                    Method buildMethod = builderClass.getDeclaredMethod("build");
+                    module.hook(buildMethod).intercept(chain -> {
+                        Object result = chain.proceed();
+                        if (result instanceof ImageReader) {
+                            ImageReader reader = (ImageReader) result;
+                            int w = reader.getWidth();
+                            int h = reader.getHeight();
+                            int format = reader.getImageFormat();
+                            String fmtName = getFormatName(format);
+
+                            if (w > 0 && h > 0) {
+                                if (format == ImageFormat.JPEG || (w * h >= activeCaptureWidth * activeCaptureHeight)) {
+                                    activeCaptureWidth = w;
+                                    activeCaptureHeight = h;
+                                }
+                            }
+
+                            long surfaceId = SystemUtils.INSTANCE.getSurfaceId(reader.getSurface());
+                            readerTracker.put(reader, new ReaderMetadata(w, h, format, fmtName, surfaceId));
+                            module.registerImageReaderSurface(reader.getSurface(), format, w, h);
+                            String shortFmt = getShortFormatName(format);
+                            module.recordPipelineNode("ImageReader.Builder(" + w + "x" + h + " " + shortFmt + ")");
+                            module.logHook("[+] ImageReader.Builder.build: " + w + "x" + h + " " + fmtName + " | ID: " + surfaceId);
+                            module.showToast(w + "x" + h + " (" + fmtName + ")");
+                        }
+                        return result;
+                    });
+                    module.logHook("[+] Hooked: ImageReader.Builder#build");
+                } catch (Throwable t) {
+                    module.logHook("[!] ImageReader.Builder hook skipped: " + t.getMessage());
+                }
+            }
+
             try {
                 Method setListener = ImageReader.class.getDeclaredMethod("setOnImageAvailableListener", ImageReader.OnImageAvailableListener.class, android.os.Handler.class);
                 module.hook(setListener).intercept(chain -> {
@@ -135,6 +173,23 @@ public class ImageReaderHook {
                 });
                 module.logHook("[+] Hooked: ImageReader#setOnImageAvailableListener");
             } catch (Throwable ignored) {}
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    Method setListenerExecutor = ImageReader.class.getDeclaredMethod(
+                        "setOnImageAvailableListener",
+                        ImageReader.OnImageAvailableListener.class,
+                        Executor.class
+                    );
+                    module.hook(setListenerExecutor).intercept(chain -> {
+                        ImageReader reader = (ImageReader) chain.getThisObject();
+                        ReaderMetadata meta = readerTracker.get(reader);
+                        module.logHook("[*] ImageReader.setOnImageAvailableListener(Executor) | Reader: " + (meta != null ? meta.toString() : "unknown"));
+                        return chain.proceed();
+                    });
+                    module.logHook("[+] Hooked: ImageReader#setOnImageAvailableListener(Executor)");
+                } catch (Throwable ignored) {}
+            }
 
             try {
                 Method acquireLatest = ImageReader.class.getDeclaredMethod("acquireLatestImage");
