@@ -28,8 +28,10 @@ class XCamModule : XposedModule() {
     private var mContext: Context? = null
     private var hooksInstalled = false
     private val ignoreHooks = ThreadLocal.withInitial { false }
-    private var yuvDecoder: MediaCodecYuvDecoder? = null
-    private var audioDecoder: MediaCodecAudioDecoder? = null
+    @Volatile private var yuvDecoder: MediaCodecYuvDecoder? = null
+    @Volatile private var audioDecoder: MediaCodecAudioDecoder? = null
+    private val yuvLock = Any()
+    private val audioLock = Any()
     
     private val injectors = XCamInjectors(this)
     private val settings = SettingsManager()
@@ -98,14 +100,24 @@ class XCamModule : XposedModule() {
         PipelineTracker.reportCapture(mContext, width, height, thumbnail)
     }
 
+    private fun getOrCreateYuvDecoder(ctx: Context, path: String): MediaCodecYuvDecoder {
+        return yuvDecoder ?: synchronized(yuvLock) {
+            yuvDecoder ?: MediaCodecYuvDecoder(ctx, path) { printLog(it) }.apply { start() }.also { yuvDecoder = it }
+        }
+    }
+
+    private fun getOrCreateAudioDecoder(ctx: Context, path: String): MediaCodecAudioDecoder {
+        return audioDecoder ?: synchronized(audioLock) {
+            audioDecoder ?: MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }.also { audioDecoder = it }
+        }
+    }
+
     fun injectYuvFrame(image: android.media.Image, width: Int, height: Int) {
         val path = settings.mediaPath
         val ctx = mContext
         if (path != null && ctx != null && path.lowercase().endsWith(".mp4")) {
-            if (yuvDecoder == null) {
-                yuvDecoder = MediaCodecYuvDecoder(ctx, path) { printLog(it) }.apply { start() }
-            }
-            val frame = yuvDecoder?.latestFrame
+            val decoder = getOrCreateYuvDecoder(ctx, path)
+            val frame = decoder.latestFrame
             if (frame != null) {
                 yuvProcessor.injectYuvFrame(image, frame)
                 return
@@ -121,10 +133,8 @@ class XCamModule : XposedModule() {
         val ctx = mContext ?: return null
 
         if (path.lowercase().endsWith(".mp4")) {
-            if (yuvDecoder == null) {
-                yuvDecoder = MediaCodecYuvDecoder(ctx, path) { printLog(it) }.apply { start() }
-            }
-            val frame = yuvDecoder?.latestFrame
+            val decoder = getOrCreateYuvDecoder(ctx, path)
+            val frame = decoder.latestFrame
             if (frame != null) {
                 return yuvProcessor.frameToNv21(frame, width, height)
             }
@@ -142,10 +152,14 @@ class XCamModule : XposedModule() {
     }
 
     fun stopEngine() {
-        yuvDecoder?.stop()
-        yuvDecoder = null
-        audioDecoder?.stop()
-        audioDecoder = null
+        synchronized(yuvLock) {
+            yuvDecoder?.stop()
+            yuvDecoder = null
+        }
+        synchronized(audioLock) {
+            audioDecoder?.stop()
+            audioDecoder = null
+        }
         engine.stop()
         captureManager.reset()
         injectors.imageReaderHook.reset()
@@ -157,28 +171,19 @@ class XCamModule : XposedModule() {
     fun injectAudioBytes(buffer: ByteArray, offset: Int, length: Int) {
         val path = settings.mediaPath ?: return
         val ctx = mContext ?: return
-        if (audioDecoder == null) {
-            audioDecoder = MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }
-        }
-        audioDecoder?.readBytes(buffer, offset, length)
+        getOrCreateAudioDecoder(ctx, path).readBytes(buffer, offset, length)
     }
 
     fun injectAudioShorts(buffer: ShortArray, offset: Int, length: Int) {
         val path = settings.mediaPath ?: return
         val ctx = mContext ?: return
-        if (audioDecoder == null) {
-            audioDecoder = MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }
-        }
-        audioDecoder?.readShorts(buffer, offset, length)
+        getOrCreateAudioDecoder(ctx, path).readShorts(buffer, offset, length)
     }
 
     fun injectAudioByteBuffer(buffer: java.nio.ByteBuffer, length: Int) {
         val path = settings.mediaPath ?: return
         val ctx = mContext ?: return
-        if (audioDecoder == null) {
-            audioDecoder = MediaCodecAudioDecoder(ctx, path) { printLog(it) }.apply { start() }
-        }
-        audioDecoder?.readByteBuffer(buffer, length)
+        getOrCreateAudioDecoder(ctx, path).readByteBuffer(buffer, length)
     }
 
     fun getImageReaderCaptureWidth(): Int = injectors.imageReaderHook.activeCaptureWidth

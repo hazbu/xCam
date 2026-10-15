@@ -119,10 +119,13 @@ class MediaCodecYuvDecoder(
                     if (inIndex >= 0) {
                         val inputBuffer = codec.getInputBuffer(inIndex)
                         if (inputBuffer != null) {
-                            val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                            var sampleSize = extractor.readSampleData(inputBuffer, 0)
                             if (sampleSize < 0) {
                                 extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                            } else {
+                                sampleSize = extractor.readSampleData(inputBuffer, 0)
+                            }
+
+                            if (sampleSize > 0) {
                                 codec.queueInputBuffer(
                                     inIndex,
                                     0,
@@ -131,6 +134,8 @@ class MediaCodecYuvDecoder(
                                     0
                                 )
                                 extractor.advance()
+                            } else {
+                                codec.queueInputBuffer(inIndex, 0, 0, 0, 0)
                             }
                         }
                     }
